@@ -81,8 +81,8 @@
      (With bound-id
            (subst* named-expr)
            (if (eq? bound-id from)
-             bound-body
-             (subst* bound-body)))]))
+               bound-body
+               (subst* bound-body)))]))
 
 #| Formal specs for `eval':
      eval(N)            = N
@@ -102,9 +102,9 @@
 (define (eval-number expr)
   (let ([result (eval expr)])
     (if (number? result)
-      result
-      (error 'eval-number "need a number when evaluating ~s, but got ~s"
-             expr result))))
+        result
+        (error 'eval-number "need a number when evaluating ~s, but got ~s"
+               expr result))))
 
 (: value->algae : (U Number) -> ALGAE)
 ;; converts a value to an ALGAE value (so it can be used with `subst')
@@ -121,19 +121,23 @@
         ;; left in for clarity.)
         ))
 
+(: sub-helper : Number Number -> Number)
+(define (sub-helper a b) (- b a))
+
+(: division-helper : Number Number -> Number)
+(define (division-helper a b) (/ b a))
+
 (: eval : ALGAE -> (U Number))
 ;; evaluates ALGAE expressions by reducing them to numbers
 (define (eval expr)
   (cases expr
     [(Num n) n]
-    [(Add args) (+ (eval-number (first args))
-                   (eval-number (second args)))]
-    [(Mul args) (* (eval-number (first args))
-                   (eval-number (second args)))]
-    [(Sub fst args) (- (eval-number fst)
-                       (eval-number (first args)))]
-    [(Div fst args) (/ (eval-number fst)
-                       (eval-number (first args)))]
+    [(Add args) (foldl + 0 (map eval-number args))]
+    [(Mul args) (foldl * 1 (map eval-number args))]
+    [(Sub fst args) (foldl sub-helper (eval-number fst) (map eval-number args))]
+    [(Div fst args) (foldl division-helper
+                           (eval-number fst)
+                           (map eval-number args))]
     [(With bound-id named-expr bound-body)
      (eval (subst bound-body
                   bound-id
@@ -150,9 +154,7 @@
 (test (run "5") => 5)
 (test (run "{+ 5 5}") => 10)
 (test (run "{* 5 5}") => 25)
-(test (run "{* 5 1 1}") => 5)
 (test (run "{/ 5 5}") => 1)
-(test (run "{/ {* 1 5} {* 5 1} 1}") => 1)
 (test (run "{with {x {+ 5 5}} {+ x x}}") => 20)
 (test (run "{with {x 5} {+ x x}}") => 10)
 (test (run "{with {x {+ 5 5}} {with {y {- x 3}} {+ y y}}}") => 14)
@@ -165,3 +167,8 @@
 (test (run "{with something else blah blah blah}") =error> "bad `with' syntax")
 (test (run "{intentionally bad}") =error> "bad syntax")
 (test (run "{with {z 5} {* x 3 y}}") =error> "free identifier")
+
+;; test cases for Part 1
+(test (run "{* 5 1 2}") => 10)
+(test (run "{+ 1 2 3 4 5}") => 15)
+(test (run "{/ {* 10 5} {* 5 2} 5}") => 1)
