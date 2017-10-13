@@ -2,10 +2,15 @@
 
 #| BNF for the ALGAE language:
      <ALGAE> ::= <num>
-               | { + <ALGAE> ... }
-               | { * <ALGAE> ... }
-               | { - <ALGAE> <ALGAE> ... }
-               | { / <ALGAE> <ALGAE> ... }
+               | <True>
+               | <False>
+               | { +  <ALGAE> ... }
+               | { *  <ALGAE> ... }
+               | { -  <ALGAE> <ALGAE> ... }
+               | { /  <ALGAE> <ALGAE> ... }
+               | { <  <ALGAE> <ALGAE>}
+               | { =  <ALGAE> <ALGAE>}
+               | { <= <ALGAE> <ALGAE>}
                | { with { <id> <ALGAE> } <ALGAE> }
                | <id>
 |#
@@ -13,11 +18,15 @@
 ;; ALGAE abstract syntax trees
 (define-type ALGAE
   [Num  Number]
+  [Bool Boolean]
   [Add  (Listof ALGAE)]
   [Mul  (Listof ALGAE)]
   [Sub  ALGAE (Listof ALGAE)]
   [Div  ALGAE (Listof ALGAE)]
   [Id   Symbol]
+  [Less ALGAE ALGAE]
+  [Equal ALGAE ALGAE]
+  [LessEq ALGAE ALGAE]
   [With Symbol ALGAE ALGAE])
 
 (: parse-sexpr : Sexpr -> ALGAE)
@@ -28,7 +37,10 @@
   (define (parse-sexprs sexprs) (map parse-sexpr sexprs))
   (match sexpr
     [(number: n)    (Num n)]
-    [(symbol: name) (Id name)]
+    [(symbol: bool) (cond
+                      ((equal? 'True bool) (Bool bool))
+                      ((equal? 'False bool) (Bool bool))
+                      (else (Id bool)))]
     [(cons 'with more)
      (match sexpr
        [(list 'with (list (symbol: name) named) body)
@@ -38,6 +50,9 @@
     [(list '* args ...)     (Mul (parse-sexprs args))]
     [(list '- fst args ...) (Sub (parse-sexpr fst) (parse-sexprs args))]
     [(list '/ fst args ...) (Div (parse-sexpr fst) (parse-sexprs args))]
+    [(list '< fst second)   (Less (parse-sexpr fst) (parse-sexpr second))]
+    [(list '= fst second)   (Equal (parse-sexpr fst) (parse-sexpr second))]
+    [(list '<= fst second)   (LessEq (parse-sexpr fst) (parse-sexpr second))]
     [else (error 'parse-sexpr "bad syntax in ~s" sexpr)]))
 
 (: parse : String -> ALGAE)
@@ -46,13 +61,18 @@
   (parse-sexpr (string->sexpr str)))
 
 #| Formal specs for `subst':
-   (`N' is a <num>, `E1', `E2' are <ALGAE>s, `x' is some <id>, `y' is a
+   (`N' is a <num>, 'B is a True/False `E1', `E2' are <ALGAE>s,
+    `x' is some <id>, `y' is a
    *different* <id>)
       N[v/x]                = N
-      {+ E ...}[v/x]        = {+ E[v/x] ...}
-      {* E ...}[v/x]        = {* E[v/x] ...}
-      {- E1 E ...}[v/x]     = {- E1[v/x] E[v/x] ...}
-      {/ E1 E ...}[v/x]     = {/ E1[v/x] E[v/x] ...}
+      B[v/x]                = True/False
+      {+ E ...}[v/x]        = {+  E[v/x] ...}
+      {* E ...}[v/x]        = {*  E[v/x] ...}
+      {- E1 E ...}[v/x]     = {-  E1[v/x] E[v/x] ...}
+      {/ E1 E ...}[v/x]     = {/  E1[v/x] E[v/x] ...}
+      {< E1 E2}[v/x]        = {<  E1[v/x] E2[v/x]}
+      {= E1 E2}[v/x]        = {=  E1[v/x] E2[v/x]}
+      {<= E1 E2}[v/x]       = {<= E1[v/x] E2[v/x]}
       y[v/x]                = y
       x[v/x]                = v
       {with {y E1} E2}[v/x] = {with {y E1[v/x]} E2[v/x]}
@@ -72,10 +92,14 @@
   (define (substs* exprs) (map subst* exprs))
   (cases expr
     [(Num n)        expr]
+    [(Bool n)       expr]
     [(Add args)     (Add (substs* args))]
     [(Mul args)     (Mul (substs* args))]
     [(Sub fst args) (Sub (subst* fst) (substs* args))]
     [(Div fst args) (Div (subst* fst) (substs* args))]
+    [(Less fst second) (Less (subst* fst) (substs* second))]
+    [(Equal fst second) (Equal (subst* fst) (substs* second))]
+    [(LessEq fst second) (LessEq (subst* fst) (substs* second))]
     [(Id name)      (if (eq? name from) to expr)]
     [(With bound-id named-expr bound-body)
      (With bound-id
@@ -92,6 +116,9 @@
      eval({/ E})        = 1/evalN(E)
      eval({- E1 E ...}) = evalN(E1) - (evalN(E) + ...)
      eval({/ E1 E ...}) = evalN(E1) / (evalN(E) * ...)
+     eval({< E1 E2})    = evalN(E1) < evalN(E2)
+     eval({= E1 E2})    = evalN(E1) = evalN(E2)
+     eval({<= E1 E2})   = evalN(E1) <= evalN(E2)
      eval(id)           = error!
      eval({with {x E1} E2}) = eval(E2[eval(E1)/x])
      evalN(E) = eval(E) if it is a number, error otherwise
@@ -110,6 +137,7 @@
 ;; converts a value to an ALGAE value (so it can be used with `subst')
 (define (value->algae val)
   (cond [(number? val) (Num val)]
+        [(boolean? val) (Bool val)]
         ;; Note: a `cond' doesn't make much sense now, but it will when
         ;; we extend the language with booleans.  Also, since we use
         ;; Typed Racket, the type checker makes sure that this function
@@ -129,15 +157,19 @@
 ;; helper method to cope with Racket's mechanism for foldl
 (define (div-helper a b) (/ b a))
 
-(: eval : ALGAE -> (U Number))
+(: eval : ALGAE -> (U Number Boolean))
 ;; evaluates ALGAE expressions by reducing them to numbers
 (define (eval expr)
   (cases expr
     [(Num n) n]
+    [(Bool n) n]
     [(Add args) (foldl + 0 (map eval-number args))]
     [(Mul args) (foldl * 1 (map eval-number args))]
     [(Sub fst args) (foldl sub-helper (eval-number fst) (map eval-number args))]
     [(Div fst args) (foldl div-helper (eval-number fst) (map eval-number args))]
+    [(Less fst second) (< (eval-number fst) (eval-number second))]
+    [(Equal fst second) (= (eval-number fst) (eval-number second))]
+    [(LessEq fst second) (<= (eval-number fst) (eval-number second))]
     [(With bound-id named-expr bound-body)
      (eval (subst bound-body
                   bound-id
