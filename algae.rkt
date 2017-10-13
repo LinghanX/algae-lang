@@ -172,3 +172,6 @@
 (test (run "{* 5 1 2}") => 10)
 (test (run "{+ 1 2 3 4 5}") => 15)
 (test (run "{/ {* 10 5} {* 5 2} 5}") => 1)
+;; corner cases needed
+
+(define minutes-spent 50)
