@@ -122,10 +122,12 @@
         ))
 
 (: sub-helper : Number Number -> Number)
+;; helper method to cope with Racket's mechanism for foldl
 (define (sub-helper a b) (- b a))
 
-(: division-helper : Number Number -> Number)
-(define (division-helper a b) (/ b a))
+(: div-helper : Number Number -> Number)
+;; helper method to cope with Racket's mechanism for foldl
+(define (div-helper a b) (/ b a))
 
 (: eval : ALGAE -> (U Number))
 ;; evaluates ALGAE expressions by reducing them to numbers
@@ -135,9 +137,7 @@
     [(Add args) (foldl + 0 (map eval-number args))]
     [(Mul args) (foldl * 1 (map eval-number args))]
     [(Sub fst args) (foldl sub-helper (eval-number fst) (map eval-number args))]
-    [(Div fst args) (foldl division-helper
-                           (eval-number fst)
-                           (map eval-number args))]
+    [(Div fst args) (foldl div-helper (eval-number fst) (map eval-number args))]
     [(With bound-id named-expr bound-body)
      (eval (subst bound-body
                   bound-id
@@ -172,6 +172,9 @@
 (test (run "{* 5 1 2}") => 10)
 (test (run "{+ 1 2 3 4 5}") => 15)
 (test (run "{/ {* 10 5} {* 5 2} 5}") => 1)
-;; corner cases needed
+(test (run "{+}") => 0)
+(test (run "{*}") => 1)
+(test (run "{/ 3}") => 3)
+(test (run "{- 1}") => 1)
 
 (define minutes-spent 50)
