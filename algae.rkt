@@ -175,7 +175,7 @@
                   (value->algae (eval named-expr))))]
     [(Id name) (error 'eval "free identifier: ~s" name)]))
 
-(: run : String -> (U Number))
+(: run : String -> (U Number Boolean))
 ;; evaluate an ALGAE program contained in a string
 (define (run str)
   (eval (parse str)))
@@ -206,5 +206,9 @@
 (test (run "{*}") => 1)
 (test (run "{/ 3}") => 3)
 (test (run "{- 1}") => 1)
+
+;; test cases for Part 2
+
+(test (run "{< 2 3}") => 'True)
 
 (define minutes-spent 50)
