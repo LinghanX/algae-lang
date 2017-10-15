@@ -37,10 +37,8 @@
   (define (parse-sexprs sexprs) (map parse-sexpr sexprs))
   (match sexpr
     [(number: n)    (Num n)]
-    [(symbol: bool) (cond
-                      ((equal? 'True bool) (Bool bool))
-                      ((equal? 'False bool) (Bool bool))
-                      (else (Id bool)))]
+    [(boolean: bool) (Bool bool)]
+    [(symbol: id) (Id id)]
     [(cons 'with more)
      (match sexpr
        [(list 'with (list (symbol: name) named) body)
@@ -97,9 +95,9 @@
     [(Mul args)     (Mul (substs* args))]
     [(Sub fst args) (Sub (subst* fst) (substs* args))]
     [(Div fst args) (Div (subst* fst) (substs* args))]
-    [(Less fst second) (Less (subst* fst) (substs* second))]
-    [(Equal fst second) (Equal (subst* fst) (substs* second))]
-    [(LessEq fst second) (LessEq (subst* fst) (substs* second))]
+    [(Less fst second) (Less (subst* fst) (subst* second))]
+    [(Equal fst second) (Equal (subst* fst) (subst* second))]
+    [(LessEq fst second) (LessEq (subst* fst) (subst* second))]
     [(Id name)      (if (eq? name from) to expr)]
     [(With bound-id named-expr bound-body)
      (With bound-id
@@ -133,7 +131,7 @@
         (error 'eval-number "need a number when evaluating ~s, but got ~s"
                expr result))))
 
-(: value->algae : (U Number) -> ALGAE)
+(: value->algae : (U Number Boolean) -> ALGAE)
 ;; converts a value to an ALGAE value (so it can be used with `subst')
 (define (value->algae val)
   (cond [(number? val) (Num val)]
