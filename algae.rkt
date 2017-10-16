@@ -2,8 +2,8 @@
 
 #| BNF for the ALGAE language:
      <ALGAE> ::= <num>
-               | <True>
-               | <False>
+               | True
+               | False
                | { +  <ALGAE> ... }
                | { *  <ALGAE> ... }
                | { -  <ALGAE> <ALGAE> ... }
@@ -85,6 +85,7 @@
       x[v/x]                = v
       {with {y E1} E2}[v/x] = {with {y E1[v/x]} E2[v/x]}
       {with {x E1} E2}[v/x] = {with {x E1[v/x]} E2}
+      {if COND E1 E2}[v/x]  = {if COND[v/x] E1[v/x] E2[v/x]}
 |#
 
 (: subst : ALGAE Symbol ALGAE -> ALGAE)
@@ -120,6 +121,8 @@
 
 #| Formal specs for `eval':
      eval(N)            = N
+     eval(True)         = true(#t)
+     eval(False)        = false(#f)
      eval({+ E ...})    = evalN(E) + ...
      eval({* E ...})    = evalN(E) * ...
      eval({- E})        = -evalN(E)
@@ -132,6 +135,15 @@
      eval(id)           = error!
      eval({with {x E1} E2}) = eval(E2[eval(E1)/x])
      evalN(E) = eval(E) if it is a number, error otherwise
+     eval({< E1 E2})    = true(#t)    if evalB(E1) < evalB(E2)
+                        | false(#f)   if evalB(E1) >= evalB(E2)
+     eval({<= E1 E2})   = true(#t)    if evalB(E1) <= evalB(E2)
+                        | false(#f)   if evalB(E1) > evalB(E2)
+     eval({= E1 E2})    = true(#t)    if evalB(E1) = evalB(E2)
+                        | false(#f)   if evalB(E1) != evalB(E2)
+     evalB(E) = eval(E) if it is a boolean, error otherwise
+     eval({if COND E1 E2}) = eval(E1) if evalB(COND) is true(#t)
+     eval({if COND E1 E2}) = eval(E2) if evalB(COND) is false(#f)
 |#
 
 (: eval-number : ALGAE -> Number)
