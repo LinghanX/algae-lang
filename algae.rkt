@@ -65,14 +65,29 @@
     [(list '= fst second)   (Equal (parse-sexpr fst) (parse-sexpr second))]
     [(list '<= fst second)   (LessEq (parse-sexpr fst) (parse-sexpr second))]
     ;; syntax replace for "or" "and" "not"
-    [(list 'not expr)        (If (parse-sexpr expr) (Bool #f) (Bool #t))]
-    [(list 'and expr1 expr2) (If (parse-sexpr expr1)
-                                 (parse-sexpr expr2)
-                                 (Bool #f))]
-    [(list 'or expr1 expr2) (If (parse-sexpr expr1)
-                                (Bool #t)
-                                (parse-sexpr expr2))]
+    [(list 'not expr)       (Not expr)]
+    [(list 'and expr1 expr2) (And expr1 expr2)]
+    [(list 'or expr1 expr2) (Or expr1 expr2)]
     [else (error 'parse-sexpr "bad syntax in ~s" sexpr)]))
+
+(: Not : Sexpr -> ALGAE)
+;; Not helper to takes an S-expression and return an ALGAE
+(define (Not expr)
+  (If (parse-sexpr expr) (Bool #f) (Bool #t)))
+
+(: And : Sexpr Sexpr -> ALGAE)
+;; And helper to takes an S-expression and return an ALGAE
+(define (And expr1 expr2)
+  (If (parse-sexpr expr1)
+      (parse-sexpr expr2)
+      (Bool #f)))
+
+(: Or : Sexpr Sexpr -> ALGAE)
+;; Or helper to takes an S-expression and return an ALGAE
+(define (Or expr1 expr2)
+  (If (parse-sexpr expr1)
+      (Bool #t)
+      (parse-sexpr expr2)))
 
 (: parse : String -> ALGAE)
 ;; parses a string containing an ALGAE expression to an ALGAE AST
@@ -212,11 +227,12 @@
     [(Bool n) n]
     [(Add args) (foldl + 0 (map eval-number args))]
     [(Mul args) (foldl * 1 (map eval-number args))]
-    [(Sub fst args) (if (null? args)
-                        (- (eval-number fst))
-                        (foldl sub-helper (eval-number fst)
-                               (map eval-number args)))]
-    [(Div fst args) (foldl div-helper (eval-number fst) (map eval-number args))]
+    [(Sub fst args)
+     (if (null? args)
+         (- (eval-number fst))
+         (foldl sub-helper (eval-number fst) (map eval-number args)))]
+    [(Div fst args)
+     (foldl div-helper (eval-number fst) (map eval-number args))]
     [(Less fst second) (< (eval-number fst) (eval-number second))]
     [(Equal fst second) (= (eval-number fst) (eval-number second))]
     [(LessEq fst second) (<= (eval-number fst) (eval-number second))]
@@ -310,8 +326,9 @@
 (test (run "{or True False}") => #t)
 (test (run "{or False True}") => #t)
 (test (run "{or True True}") => #t)
+
 ;; make sure the "or", "and" are lazy evaluated
 (test (run "{and {< 5 4} {+ 4 True}}") => #f)
 (test (run "{or {= 1 1} {if 4 8 9}}") => #t)
 
-(define minutes-spent 150)
+(define minutes-spent 50)
