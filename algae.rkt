@@ -132,6 +132,15 @@
         (error 'eval-number "need a number when evaluating ~s, but got ~s"
                expr result))))
 
+(: eval-boolean : ALGAE -> Boolean)
+;; helper for 'eval': verifies that the result is a boolean
+(define (eval-boolean expr)
+  (let ([result (eval expr)])
+    (if (boolean? result)
+        result
+        (error 'eval-boolean "need a boolean when evaluating ~s, but got ~s"
+               expr result))))
+
 (: value->algae : (U Number Boolean) -> ALGAE)
 ;; converts a value to an ALGAE value (so it can be used with `subst')
 (define (value->algae val)
