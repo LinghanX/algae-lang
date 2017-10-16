@@ -37,7 +37,8 @@
   (define (parse-sexprs sexprs) (map parse-sexpr sexprs))
   (match sexpr
     [(number: n)    (Num n)]
-    [(boolean: bool) (Bool bool)]
+    ['True (Bool #t)]
+    ['False (Bool #f)]
     [(symbol: id) (Id id)]
     [(cons 'with more)
      (match sexpr
@@ -161,10 +162,14 @@
   (cases expr
     [(Num n) n]
     [(Bool n) n]
-    [(Add args) (foldl + 0 (map eval-number args))]
-    [(Mul args) (foldl * 1 (map eval-number args))]
-    [(Sub fst args) (foldl sub-helper (eval-number fst) (map eval-number args))]
-    [(Div fst args) (foldl div-helper (eval-number fst) (map eval-number args))]
+    [(Add args)
+     (foldl + 0 (map eval-number args))]
+    [(Mul args)
+     (foldl * 1 (map eval-number args))]
+    [(Sub fst args)
+     (foldl sub-helper (eval-number fst) (map eval-number args))]
+    [(Div fst args)
+     (foldl div-helper (eval-number fst) (map eval-number args))]
     [(Less fst second) (< (eval-number fst) (eval-number second))]
     [(Equal fst second) (= (eval-number fst) (eval-number second))]
     [(LessEq fst second) (<= (eval-number fst) (eval-number second))]
@@ -209,6 +214,8 @@
 
 ;; test cases for Part 2
 
-(test (run "{< 2 3}") => 'True)
+(test (run "{< 2 3}") => #t)
+(test (run "True") => #t)
+(test (run "False") => #f)
 
 (define minutes-spent 50)
