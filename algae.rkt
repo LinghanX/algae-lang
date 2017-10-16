@@ -57,17 +57,17 @@
             (parse-sexpr true-part)
             (parse-sexpr false-part))]
        [else (error 'parse-sexpr "bad `if' syntax in ~s" sexpr)])]
-    [(list '+ args ...)     (Add (parse-sexprs args))]
-    [(list '* args ...)     (Mul (parse-sexprs args))]
-    [(list '- fst args ...) (Sub (parse-sexpr fst) (parse-sexprs args))]
-    [(list '/ fst args ...) (Div (parse-sexpr fst) (parse-sexprs args))]
-    [(list '< fst second)   (Less (parse-sexpr fst) (parse-sexpr second))]
-    [(list '= fst second)   (Equal (parse-sexpr fst) (parse-sexpr second))]
+    [(list '+ args ...)      (Add (parse-sexprs args))]
+    [(list '* args ...)      (Mul (parse-sexprs args))]
+    [(list '- fst args ...)  (Sub (parse-sexpr fst) (parse-sexprs args))]
+    [(list '/ fst args ...)  (Div (parse-sexpr fst) (parse-sexprs args))]
+    [(list '< fst second)    (Less (parse-sexpr fst) (parse-sexpr second))]
+    [(list '= fst second)    (Equal (parse-sexpr fst) (parse-sexpr second))]
     [(list '<= fst second)   (LessEq (parse-sexpr fst) (parse-sexpr second))]
     ;; syntax replace for "or" "and" "not"
-    [(list 'not expr)       (Not expr)]
+    [(list 'not expr)        (Not expr)]
     [(list 'and expr1 expr2) (And expr1 expr2)]
-    [(list 'or expr1 expr2) (Or expr1 expr2)]
+    [(list 'or expr1 expr2)  (Or expr1 expr2)]
     [else (error 'parse-sexpr "bad syntax in ~s" sexpr)]))
 
 (: Not : Sexpr -> ALGAE)
@@ -331,4 +331,4 @@
 (test (run "{and {< 5 4} {+ 4 True}}") => #f)
 (test (run "{or {= 1 1} {if 4 8 9}}") => #t)
 
-(define minutes-spent 50)
+(define minutes-spent 150)
