@@ -14,6 +14,9 @@
                | { with { <id> <ALGAE> } <ALGAE> }
                | <id>
                | { if <ALGAE> <ALGAE> <ALGAE> }
+               | { not <ALGAE> }
+               | { and <ALGAE> <ALGAE> }
+               | { or <ALGAE> <ALGAE> }
 |#
 
 ;; ALGAE abstract syntax trees
@@ -61,6 +64,14 @@
     [(list '< fst second)   (Less (parse-sexpr fst) (parse-sexpr second))]
     [(list '= fst second)   (Equal (parse-sexpr fst) (parse-sexpr second))]
     [(list '<= fst second)   (LessEq (parse-sexpr fst) (parse-sexpr second))]
+    ;; syntax replace for "or" "and" "not"
+    [(list 'not expr)        (If (parse-sexpr expr) (Bool #f) (Bool #t))]
+    [(list 'and expr1 expr2) (If (parse-sexpr expr1)
+                                 (parse-sexpr expr2)
+                                 (Bool #f))]
+    [(list 'or expr1 expr2) (If (parse-sexpr expr1)
+                                (Bool #t)
+                                (parse-sexpr expr2))]
     [else (error 'parse-sexpr "bad syntax in ~s" sexpr)]))
 
 (: parse : String -> ALGAE)
@@ -86,6 +97,7 @@
       {with {y E1} E2}[v/x] = {with {y E1[v/x]} E2[v/x]}
       {with {x E1} E2}[v/x] = {with {x E1[v/x]} E2}
       {if COND E1 E2}[v/x]  = {if COND[v/x] E1[v/x] E2[v/x]}
+      for "or" "and" "not" do the same as + - * / < = <=
 |#
 
 (: subst : ALGAE Symbol ALGAE -> ALGAE)
@@ -144,6 +156,10 @@
      evalB(E) = eval(E) if it is a boolean, error otherwise
      eval({if COND E1 E2}) = eval(E1) if evalB(COND) is true(#t)
      eval({if COND E1 E2}) = eval(E2) if evalB(COND) is false(#f)
+     ;; fake element in "or" "and" "not", use syntax transform
+     eval({not E})      = eval({if E False True})
+     eval({and E1 E2})  = eval({if E1 E2 False})
+     eval({or E1 E2})   = eval({if E1 True E2})
 |#
 
 (: eval-number : ALGAE -> Number)
@@ -283,5 +299,20 @@
 (test (run "{if {+ 1 2} 11 12}") =error>
       (string-append "eval-boolean: need a boolean when evaluating"
                      " (Add ((Num 1) (Num 2))), but got 3"))
+
+;; test cases for Part 3
+(test (run "{not {= 1 1}}") => #f)
+(test (run "{not False}") => #t)
+(test (run "{and True True}") => #t)
+(test (run "{and False True}") => #f)
+(test (run "{and True False}") => #f)
+(test (run "{and False False}") => #f)
+(test (run "{or False False}") => #f)
+(test (run "{or True False}") => #t)
+(test (run "{or False True}") => #t)
+(test (run "{or True True}") => #t)
+;; make sure the "or", "and" are lazy evaluated
+(test (run "{and {< 5 4} {+ 4 True}}") => #f)
+(test (run "{or {= 1 1} {if 4 8 9}}") => #t)
 
 (define minutes-spent 50)
