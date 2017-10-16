@@ -220,11 +220,28 @@
 (test (run "{*}") => 1)
 (test (run "{/ 3}") => 3)
 (test (run "{- 1}") => 1)
+;; test with combine with arithmetic operator
+(test (run "{with {c {/ 1 5}} {+ {* 20 c} 6}}") => 10) ;; 10 = 20 * 1/5 + 6
+(test (run "{with {x {/ 1 3}} {with {y {/ 1 9}} {/ x y}}}") => 3)
+(test (run "{with {False True} {with {y False} y}}") => #f) 
 
 ;; test cases for Part 2
 
-(test (run "{< 2 3}") => #t)
+;; the base syntax
 (test (run "True") => #t)
 (test (run "False") => #f)
+;; the comparator
+(test (run "{< 2 3}") => #t)
+(test (run "{<= 4 4}") => #t)
+(test (run "{<= 57 56}") => #f)
+(test (run "{= 9 9}") => #t)
+;; test the type check
+(test (run "{< 81 False}") =error>
+      "need a number when evaluating (Bool #f), but got #f")
+;; combine comparator and with statement
+(test (run "{with {a {* 12 13}} {with {b {< 157 a}} b}}") => #f)
+(test (run "{with {x {* 14 7}} {<= 99 x}}") => #f)
+(test (run "{with {x 6} {= 36 {* x 6}}}") => #t)
+
 
 (define minutes-spent 50)
