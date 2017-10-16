@@ -215,7 +215,9 @@
     [(Mul args)
      (foldl * 1 (map eval-number args))]
     [(Sub fst args)
-     (foldl sub-helper (eval-number fst) (map eval-number args))]
+     (if (null? args)
+         (- (eval-number fst))
+         (foldl sub-helper (eval-number fst) (map eval-number args)))]
     [(Div fst args)
      (foldl div-helper (eval-number fst) (map eval-number args))]
     [(Less fst second) (< (eval-number fst) (eval-number second))]
@@ -262,7 +264,7 @@
 (test (run "{+}") => 0)
 (test (run "{*}") => 1)
 (test (run "{/ 3}") => 3)
-(test (run "{- 1}") => 1)
+(test (run "{- 1}") => -1)
 ;; test with combine with arithmetic operator
 (test (run "{with {c {/ 1 5}} {+ {* 20 c} 6}}") => 10) ;; 10 = 20 * 1/5 + 6
 (test (run "{with {x {/ 1 3}} {with {y {/ 1 9}} {/ x y}}}") => 3)
