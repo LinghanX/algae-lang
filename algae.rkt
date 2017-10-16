@@ -210,16 +210,13 @@
   (cases expr
     [(Num n) n]
     [(Bool n) n]
-    [(Add args)
-     (foldl + 0 (map eval-number args))]
-    [(Mul args)
-     (foldl * 1 (map eval-number args))]
-    [(Sub fst args)
-     (if (null? args)
-         (- (eval-number fst))
-         (foldl sub-helper (eval-number fst) (map eval-number args)))]
-    [(Div fst args)
-     (foldl div-helper (eval-number fst) (map eval-number args))]
+    [(Add args) (foldl + 0 (map eval-number args))]
+    [(Mul args) (foldl * 1 (map eval-number args))]
+    [(Sub fst args) (if (null? args)
+                        (- (eval-number fst))
+                        (foldl sub-helper (eval-number fst)
+                               (map eval-number args)))]
+    [(Div fst args) (foldl div-helper (eval-number fst) (map eval-number args))]
     [(Less fst second) (< (eval-number fst) (eval-number second))]
     [(Equal fst second) (= (eval-number fst) (eval-number second))]
     [(LessEq fst second) (<= (eval-number fst) (eval-number second))]
@@ -317,4 +314,4 @@
 (test (run "{and {< 5 4} {+ 4 True}}") => #f)
 (test (run "{or {= 1 1} {if 4 8 9}}") => #t)
 
-(define minutes-spent 50)
+(define minutes-spent 150)
