@@ -13,6 +13,7 @@
                | { <= <ALGAE> <ALGAE>}
                | { with { <id> <ALGAE> } <ALGAE> }
                | <id>
+               | { if <ALGAE> <ALGAE> <ALGAE> }
 |#
 
 ;; ALGAE abstract syntax trees
@@ -27,7 +28,8 @@
   [Less ALGAE ALGAE]
   [Equal ALGAE ALGAE]
   [LessEq ALGAE ALGAE]
-  [With Symbol ALGAE ALGAE])
+  [With Symbol ALGAE ALGAE]
+  [If ALGAE ALGAE ALGAE])
 
 (: parse-sexpr : Sexpr -> ALGAE)
 ;; parses s-expressions into ALGAEs
@@ -45,6 +47,13 @@
        [(list 'with (list (symbol: name) named) body)
         (With name (parse-sexpr named) (parse-sexpr body))]
        [else (error 'parse-sexpr "bad `with' syntax in ~s" sexpr)])]
+    [(cons 'if more)
+     (match sexpr
+       [(list 'if condition true-part false-part)
+        (If (parse-sexpr condition)
+            (parse-sexpr true-part)
+            (parse-sexpr false-part))]
+       [else (error 'parse-sexpr "bad `if' syntax in ~s" sexpr)])]
     [(list '+ args ...)     (Add (parse-sexprs args))]
     [(list '* args ...)     (Mul (parse-sexprs args))]
     [(list '- fst args ...) (Sub (parse-sexpr fst) (parse-sexprs args))]
@@ -105,7 +114,9 @@
            (subst* named-expr)
            (if (eq? bound-id from)
                bound-body
-               (subst* bound-body)))]))
+               (subst* bound-body)))]
+    [(If condition true-part false-part)
+     (If (subst* condition) (subst* true-part) (subst* false-part))]))
 
 #| Formal specs for `eval':
      eval(N)            = N
@@ -187,6 +198,10 @@
                   bound-id
                   ;; see the above `value->algae' helper
                   (value->algae (eval named-expr))))]
+    [(If condition true-part false-part)
+     (if (eval-boolean condition)
+         (eval true-part)
+         (eval false-part))]
     [(Id name) (error 'eval "free identifier: ~s" name)]))
 
 (: run : String -> (U Number Boolean))
@@ -242,6 +257,19 @@
 (test (run "{with {a {* 12 13}} {with {b {< 157 a}} b}}") => #f)
 (test (run "{with {x {* 14 7}} {<= 99 x}}") => #f)
 (test (run "{with {x 6} {= 36 {* x 6}}}") => #t)
-
+;; test basic if statement
+(test (run "{if {< 4 6} 45 True}") => 45)
+;; test if statement combine with statement
+(test (run "{with {x {* 11 5}} {with {y {* 6 9}} {if {< x y} 8 9} }}") => 9)
+(test (run "{with {x 6} {with {y {if {= x 7} 6 False}} {if y 0 1} }}") => 1)
+;; test if syntax error
+(test (run "{if cond true-part false-part more}") =error>
+      "parse-sexpr: bad `if' syntax in (if cond true-part false-part more)")
+(test (run "{if {< 1 2}}") =error>
+      "parse-sexpr: bad `if' syntax in (if (< 1 2))")
+;; test if type check
+(test (run "{if {+ 1 2} 11 12}") =error>
+      (string-append "eval-boolean: need a boolean when evaluating"
+                     " (Add ((Num 1) (Num 2))), but got 3"))
 
 (define minutes-spent 50)
