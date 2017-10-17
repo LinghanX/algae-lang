@@ -331,4 +331,4 @@
 (test (run "{and {< 5 4} {+ 4 True}}") => #f)
 (test (run "{or {= 1 1} {if 4 8 9}}") => #t)
 
-(define minutes-spent 150)
+(define minutes-spent 180)
