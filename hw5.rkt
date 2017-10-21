@@ -32,9 +32,7 @@
   [Less   ALGAE ALGAE]
   [Equal  ALGAE ALGAE]
   [LessEq ALGAE ALGAE]
-  [If     ALGAE ALGAE ALGAE]
-  [And    (Listof ALGAE)]
-  [Or     (Listof ALGAE)])
+  [If     ALGAE ALGAE ALGAE])
 
 (: parse-sexpr : Sexpr -> ALGAE)
 ;; parses s-expressions into ALGAEs
@@ -71,19 +69,25 @@
 (define (Not expr)
   (If expr (Bool #f) (Bool #t)))
 
-;(: And : (Listof ALGAE) -> ALGAE)
-;;; Translates `{and E1 E2}' syntax to core Algae.
-;(define (And args)
-;  (cond
-;    ((Equal (length args) (Num 0)) (Bool #t))
-;    ((Equal (length args) (Num 1)) (car args))
-;    (else (If (car args)
-;              (And (cdr args))))))
+(: And : (Listof ALGAE) -> ALGAE)
+;; Translates `{and E1 E2}' syntax to core Algae.
+(define (And args)
+  (cond
+    ((= (length args) 0) (Bool #t))
+    ((= (length args) 1) (car args))
+    (else (If (car args)
+              (And (cdr args))
+              (Bool #f)))))
 
-;(: Or : ALGAE ALGAE -> ALGAE)
-;;; Translates `{or E1 E2}' syntax to core Algae.
-;(define (Or expr1 expr2)
-;  (If expr1 (Bool #t) expr2))
+(: Or : (Listof ALGAE) -> ALGAE)
+;; Translates `{or E1 E2}' syntax to core Algae.
+(define (Or args)
+  (cond
+    ((= (length args) 0) (Bool #t))
+    ((= (length args) 1) (car args))
+    (else (If (car args)
+              (Bool #t)
+              (Or (cdr args))))))
 
 (: parse : String -> ALGAE)
 ;; parses a string containing an ALGAE expression to an ALGAE AST
@@ -137,8 +141,6 @@
     [(Less   lhs rhs) (Less   (subst* lhs) (subst* rhs))]
     [(Equal  lhs rhs) (Equal  (subst* lhs) (subst* rhs))]
     [(LessEq lhs rhs) (LessEq (subst* lhs) (subst* rhs))]
-    [(And args) (And (substs* args))]
-    [(Or args)  (Or  (substs* args))]
     [(If cond then else)
      (If (subst* cond) (subst* then) (subst* else))]))
 
@@ -235,8 +237,6 @@
     [(Less   lhs rhs) (<  (eval-number lhs) (eval-number rhs))]
     [(Equal  lhs rhs) (=  (eval-number lhs) (eval-number rhs))]
     [(LessEq lhs rhs) (<= (eval-number lhs) (eval-number rhs))]
-    [(And args) (foldl eval-and #t args)]
-    [(Or args)  (foldl eval-or #f args)]
     [(If cond then else) (eval (if (eval-boolean cond) then else))]))
 
 (: run : String -> (U Number Boolean))
@@ -305,7 +305,7 @@
                       {not {or False False}}}}"))
 (test (run "{and 1 2}") =error> "need a boolean")
 (test (not (run "{and {< 2 1} 3}")))
-;(test (run "{and {not {< 2 1}} 3}") => 3)
+(test (run "{and {not {< 2 1}} 3}") => 3)
 ;; test proper short-circuiting
 (test (run "{or {/ 1 0} {< 1 2}}") =error> "division by zero")
 (test (run "{or {< 1 2} {/ 1 0}}"))
