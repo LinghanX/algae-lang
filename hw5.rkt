@@ -1,23 +1,27 @@
 #lang pl 05
 
 #| BNF for the ALGAE language:
-     <ALGAE> ::= <num>
-               | { + <ALGAE> ... }
-               | { * <ALGAE> ... }
-               | { - <ALGAE> <ALGAE> ... }
-               | { / <ALGAE> <ALGAE> ... }
-               | { with { <id> <ALGAE> } <ALGAE> }
-               | <id>
-               | True
-               | False
-               | { < <ALGAE> <ALGAE> }
-               | { = <ALGAE> <ALGAE> }
-               | { <= <ALGAE> <ALGAE> }
-               | { if <ALGAE> <ALGAE> <ALGAE> }
-               | { not <ALGAE> }
-               | { and <ALGAE> ... }
-               | { or <ALGAE> ... }
+     <PROGRAM> ::= { program <FUN> ...}
+     <FUN>     ::= { fun <id> { <id> } <ALGAE> }
+     <ALGAE>   ::= <num>
+                 | { + <ALGAE> ... }
+                 | { * <ALGAE> ... }
+                 | { - <ALGAE> <ALGAE> ... }
+                 | { / <ALGAE> <ALGAE> ... }
+                 | { with { <id> <ALGAE> } <ALGAE> }
+                 | <id>
+                 | True
+                 | False
+                 | { < <ALGAE> <ALGAE> }
+                 | { = <ALGAE> <ALGAE> }
+                 | { <= <ALGAE> <ALGAE> }
+                 | { if <ALGAE> <ALGAE> <ALGAE> }
+                 | { not <ALGAE> }
+                 | { and <ALGAE> ... }
+                 | { or <ALGAE> ... }
 |#
+
+
 
 ;; ALGAE abstract syntax trees
 (define-type ALGAE
@@ -33,6 +37,25 @@
   [Equal  ALGAE ALGAE]
   [LessEq ALGAE ALGAE]
   [If     ALGAE ALGAE ALGAE])
+
+;; FUN abstract syntax trees
+(define-type FUN
+  [Fun Symbol Symbol ALGAE])
+
+;; PROGRAM abstract syntax trees
+(define-type PROGRAM
+  [Funs (Listof FUN)])
+
+(: parse-program : Sexpr -> PROGRAM)
+;; parses a whole program s-expression into a PROGRAM
+(define (parse-program sexpr)
+  (map parse-fun sexpr))
+
+(: parse-fun : Sexpr -> FUN)
+;; parses a function s-expression syntax to an instance of FUN
+(define (parse-fun sexpr)
+  (match sexpr
+    [(list )]))
 
 (: parse-sexpr : Sexpr -> ALGAE)
 ;; parses s-expressions into ALGAEs
@@ -311,3 +334,7 @@
 (test (run "{or {< 1 2} {/ 1 0}}"))
 (test (run "{not {and {/ 1 0} {< 2 1}}}") =error> "division by zero")
 (test (run "{not {and {< 2 1} {/ 1 0}}}"))
+
+;; test 3b
+(test (not (run "{and True True True False}")))
+(test (run "{or True True True False}"))
