@@ -46,10 +46,12 @@
 (define-type PROGRAM
   [Funs (Listof FUN)])
 
-(: parse-program : (Listof Sexpr) -> PROGRAM)
+(: parse-program : Sexpr -> PROGRAM)
 ;; parses a whole program s-expression into a PROGRAM
 (define (parse-program sexpr)
-  (Funs (map parse-fun sexpr)))
+  (match sexpr
+    [(cons 'program rest) (Funs (map parse-fun rest))]
+    [else (error 'parse-program: "error form in program: ~s" sexpr)]))
 
 (: parse-fun : Sexpr -> FUN)
 ;; parses a function s-expression syntax to an instance of FUN
