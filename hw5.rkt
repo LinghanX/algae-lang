@@ -58,14 +58,14 @@
 (define (parse-fun sexpr)
   (match sexpr
     [(list 'fun (symbol: fname) (list (symbol: param)) body)
-     (Fun fname param (parse-sexpr body))]))
+     (Fun fname param (parse-expr body))]))
 
-(: parse-sexpr : Sexpr -> ALGAE)
+(: parse-expr : Sexpr -> ALGAE)
 ;; parses s-expressions into ALGAEs
-(define (parse-sexpr sexpr)
+(define (parse-expr sexpr)
   ;; utility for parsing a list of expressions
   (: parse-sexprs : (Listof Sexpr) -> (Listof ALGAE))
-  (define (parse-sexprs sexprs) (map parse-sexpr sexprs))
+  (define (parse-sexprs sexprs) (map parse-expr sexprs))
   (match sexpr
     [(number: n)    (Num n)]
     ['True          (Bool #t)] ; \ check these before the next
@@ -74,20 +74,20 @@
     [(cons 'with more)
      (match sexpr
        [(list 'with (list (symbol: name) named) body)
-        (With name (parse-sexpr named) (parse-sexpr body))]
+        (With name (parse-expr named) (parse-expr body))]
        [else (error 'parse-sexpr "bad `with' syntax in ~s" sexpr)])]
     [(list '+ args ...)     (Add (parse-sexprs args))]
     [(list '* args ...)     (Mul (parse-sexprs args))]
-    [(list '- fst args ...) (Sub (parse-sexpr fst) (parse-sexprs args))]
-    [(list '/ fst args ...) (Div (parse-sexpr fst) (parse-sexprs args))]
-    [(list '<  lhs rhs)     (Less   (parse-sexpr lhs) (parse-sexpr rhs))]
-    [(list '=  lhs rhs)     (Equal  (parse-sexpr lhs) (parse-sexpr rhs))]
-    [(list '<= lhs rhs)     (LessEq (parse-sexpr lhs) (parse-sexpr rhs))]
+    [(list '- fst args ...) (Sub (parse-expr fst) (parse-sexprs args))]
+    [(list '/ fst args ...) (Div (parse-expr fst) (parse-sexprs args))]
+    [(list '<  lhs rhs)     (Less   (parse-expr lhs) (parse-expr rhs))]
+    [(list '=  lhs rhs)     (Equal  (parse-expr lhs) (parse-expr rhs))]
+    [(list '<= lhs rhs)     (LessEq (parse-expr lhs) (parse-expr rhs))]
     [(list 'if cond then else)
-     (If (parse-sexpr cond) (parse-sexpr then) (parse-sexpr else))]
+     (If (parse-expr cond) (parse-expr then) (parse-expr else))]
     [(list 'and args ...) (And (parse-sexprs args))]
     [(list 'or  args ...) (Or  (parse-sexprs args))]
-    [(list 'not arg)     (Not (parse-sexpr arg))]
+    [(list 'not arg)     (Not (parse-expr arg))]
     [else (error 'parse-sexpr "bad syntax in ~s" sexpr)]))
 
 (: Not : ALGAE -> ALGAE)
@@ -118,7 +118,7 @@
 (: parse : String -> ALGAE)
 ;; parses a string containing an ALGAE expression to an ALGAE AST
 (define (parse str)
-  (parse-sexpr (string->sexpr str)))
+  (parse-expr (string->sexpr str)))
 
 #| Formal specs for `subst':
    (`N' is a <num>, `B' is True/False, `E1', `E2' are <ALGAE>s, `x' is
@@ -270,74 +270,81 @@
 (define (run str)
   (eval (parse str)))
 
+(: run* : String -> (U Number Boolean))
+;; a version for testing simple ALGAE expressions without
+;; function calls
+(define (run* str)
+  (eval (parse-expr (string->sexpr str)) #|(Funs null)|#))
+
+
 ;; tests (for simple expressions)
-(test (run "5") => 5)
-(test (run "{+ 5 5}") => 10)
-(test (run "{with {x {+ 5 5}} {+ x x}}") => 20)
-(test (run "{with {x 5} {+ x x}}") => 10)
-(test (run "{with {x {+ 5 5}} {with {y {- x 3}} {+ y y}}}") => 14)
-(test (run "{with {x 5} {with {y {- x 3}} {+ y y}}}") => 4)
-(test (run "{with {x 5} {+ x {with {x 3} 10}}}") => 15)
-(test (run "{with {x 5} {+ x {with {x 3} x}}}") => 8)
-(test (run "{with {x 5} {+ x {with {y 3} x}}}") => 10)
-(test (run "{with {x 5} {with {y x} y}}") => 5)
-(test (run "{with {x 5} {with {x x} x}}") => 5)
+(test (run* "5") => 5)
+(test (run* "{+ 5 5}") => 10)
+(test (run* "{with {x {+ 5 5}} {+ x x}}") => 20)
+(test (run* "{with {x 5} {+ x x}}") => 10)
+(test (run* "{with {x {+ 5 5}} {with {y {- x 3}} {+ y y}}}") => 14)
+(test (run* "{with {x 5} {with {y {- x 3}} {+ y y}}}") => 4)
+(test (run* "{with {x 5} {+ x {with {x 3} 10}}}") => 15)
+(test (run* "{with {x 5} {+ x {with {x 3} x}}}") => 8)
+(test (run* "{with {x 5} {+ x {with {y 3} x}}}") => 10)
+(test (run* "{with {x 5} {with {y x} y}}") => 5)
+(test (run* "{with {x 5} {with {x x} x}}") => 5)
 
 ;; additional tests for complete coverage (part 0)
-(test (run "x") =error> "free identifier")
-(test (run "{with {x 2} {/ 12 {* x 3}}}") => 2)
-(test (run "{with}") =error> "bad `with' syntax")
-(test (run "{foo}")  =error> "bad syntax")
-(test (run "{}")     =error> "bad syntax")
-(test (run "{/}")    =error> "bad syntax")
+(test (run* "x") =error> "free identifier")
+(test (run* "{with {x 2} {/ 12 {* x 3}}}") => 2)
+(test (run* "{with}") =error> "bad `with' syntax")
+(test (run* "{foo}")  =error> "bad syntax")
+(test (run* "{}")     =error> "bad syntax")
+(test (run* "{/}")    =error> "bad syntax")
 
 ;; test Racket-like arithmetics
-(test (run "{+}") => 0)
-(test (run "{*}") => 1)
-(test (run "{+ 10}") => 10)
-(test (run "{* 10}") => 10)
-(test (run "{- 10}") => -10)
-(test (run "{/ 10}") => 1/10)
-(test (run "{+ 1 2 3 4}") => 10)
-(test (run "{* 1 2 3 4}") => 24)
-(test (run "{- 10 1 2 3 4}") => 0)
-(test (run "{/ 24 1 2 3 4}") => 1)
-(test (run "{/ 1 0}") =error> "division by zero")
-(test (run "{/ 0}") =error> "division by zero")
-(test (run "{/ 0 1}") => 0)
+(test (run* "{+}") => 0)
+(test (run* "{*}") => 1)
+(test (run* "{+ 10}") => 10)
+(test (run* "{* 10}") => 10)
+(test (run* "{- 10}") => -10)
+(test (run* "{/ 10}") => 1/10)
+(test (run* "{+ 1 2 3 4}") => 10)
+(test (run* "{* 1 2 3 4}") => 24)
+(test (run* "{- 10 1 2 3 4}") => 0)
+(test (run* "{/ 24 1 2 3 4}") => 1)
+(test (run* "{/ 1 0}") =error> "division by zero")
+(test (run* "{/ 0}") =error> "division by zero")
+(test (run* "{/ 0 1}") => 0)
 
 ;; test boolean comparators and `if'
-(test (run "{< 1 2}"))
-(test (not (run "{= 1 2}")))
-(test (run "{if {<= 4 4} 5 6}") => 5)
-(test (run "{if True False 6}") => #f)
-(test (run "{+ {< 1 2}}") =error> "need a number")
-(test (run "{if 1 2 3}") =error> "need a boolean")
-(test (run "{with {b {<= 4 5}} {if b b b}}") => #t)
-(test (run "{with {x 5} {if {< x 5} {= x 4} {<= x 7}}}"))
-(test (run "{with {b {= 3 4}} {with {x 5} {if b x x}}}") => 5)
+(test (run* "{< 1 2}"))
+(test (not (run* "{= 1 2}")))
+(test (run* "{if {<= 4 4} 5 6}") => 5)
+(test (run* "{if True False 6}") => #f)
+(test (run* "{+ {< 1 2}}") =error> "need a number")
+(test (run* "{if 1 2 3}") =error> "need a boolean")
+(test (run* "{with {b {<= 4 5}} {if b b b}}") => #t)
+(test (run* "{with {x 5} {if {< x 5} {= x 4} {<= x 7}}}"))
+(test (run* "{with {b {= 3 4}} {with {x 5} {if b x x}}}") => 5)
 
 ;; test boolean extensions
 ;; (note how new tests use previously tested features)
-(test (run "{not {< 2 1}}"))
-(test (not (run "{not {not {< 2 1}}}")))
-(test (run "{and True True}"))
-(test (run "{not {and True False}}"))
-(test (run "{not {and False True}}"))
-(test (run "{not {and False False}}"))
-(test (run "{and {and {or True True}
+(test (run* "{not {< 2 1}}"))
+(test (not (run* "{not {not {< 2 1}}}")))
+(test (run* "{and True True}"))
+(test (run* "{not {and True False}}"))
+(test (run* "{not {and False True}}"))
+(test (run* "{not {and False False}}"))
+(test (run* "{and {and {or True True}
                       {or True False}}
                  {and {or False True}
                       {not {or False False}}}}"))
-(test (run "{and 1 2}") =error> "need a boolean")
-(test (not (run "{and {< 2 1} 3}")))
-(test (run "{and {not {< 2 1}} 3}") => 3)
+(test (run* "{and 1 2}") =error> "need a boolean")
+(test (not (run* "{and {< 2 1} 3}")))
+(test (run* "{and {not {< 2 1}} 3}") => 3)
 ;; test proper short-circuiting
-(test (run "{or {/ 1 0} {< 1 2}}") =error> "division by zero")
-(test (run "{or {< 1 2} {/ 1 0}}"))
-(test (run "{not {and {/ 1 0} {< 2 1}}}") =error> "division by zero")
-(test (run "{not {and {< 2 1} {/ 1 0}}}"))
+(test (run* "{or {/ 1 0} {< 1 2}}") =error> "division by zero")
+(test (run* "{or {< 1 2} {/ 1 0}}"))
+(test (run* "{not {and {/ 1 0} {< 2 1}}}") =error> "division by zero")
+(test (run* "{not {and {< 2 1} {/ 1 0}}}"))
 
 ;; test 3b
-(test (not (run "{and True True True False}")))
-(test (run "{or True True True False}"))
+(test (not (run* "{and True True True False}")))
+(test (run* "{or True True True False}"))
