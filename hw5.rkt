@@ -46,16 +46,17 @@
 (define-type PROGRAM
   [Funs (Listof FUN)])
 
-(: parse-program : Sexpr -> PROGRAM)
+(: parse-program : (Listof Sexpr) -> PROGRAM)
 ;; parses a whole program s-expression into a PROGRAM
 (define (parse-program sexpr)
-  (map parse-fun sexpr))
+  (Funs (map parse-fun sexpr)))
 
 (: parse-fun : Sexpr -> FUN)
 ;; parses a function s-expression syntax to an instance of FUN
 (define (parse-fun sexpr)
   (match sexpr
-    [(list )]))
+    [(list 'fun (symbol: fname) (list (symbol: param)) body)
+     (Fun fname param (parse-sexpr body))]))
 
 (: parse-sexpr : Sexpr -> ALGAE)
 ;; parses s-expressions into ALGAEs
