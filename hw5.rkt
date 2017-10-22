@@ -20,6 +20,8 @@
                  | { and <ALGAE> ... }
                  | { or <ALGAE> ... }
                  | { call <id> <ALGAE> }
+                 | { vcall <ALGAE> <ALGAE> }
+                 | { quote <id> }
 |#
 
 
@@ -38,7 +40,9 @@
   [Equal  ALGAE ALGAE]
   [LessEq ALGAE ALGAE]
   [If     ALGAE ALGAE ALGAE]
-  [Call   Symbol ALGAE])
+  [Call   Symbol ALGAE]
+  [VCall  ALGAE ALGAE]
+  [Quote Symbol])
 
 ;; FUN abstract syntax trees
 (define-type FUN
@@ -47,6 +51,8 @@
 ;; PROGRAM abstract syntax trees
 (define-type PROGRAM
   [Funs (Listof FUN)])
+
+(define-type VAL = (U Number Boolean Symbol))
 
 (: parse-program : Sexpr -> PROGRAM)
 ;; parses a whole program s-expression into a PROGRAM
@@ -92,6 +98,8 @@
     [(list 'or  args ...) (Or  (parse-sexprs args))]
     [(list 'not arg)     (Not (parse-expr arg))]
     [(list 'call (symbol: fname) argument) (Call fname (parse-expr argument))]
+    [(list 'quote (symbol: fname)) (Quote fname)]
+    [(list 'vcall fexpr pexpr) (VCall (parse-expr fexpr) (parse-expr pexpr))]
     [else (error 'parse-sexpr "bad syntax in ~s" sexpr)]))
 
 (: Not : ALGAE -> ALGAE)
@@ -175,7 +183,9 @@
     [(If cond then else)
      (If (subst* cond) (subst* then) (subst* else))]
     [(Call fname arg)
-     (Call fname (subst* arg))]))
+     (Call fname (subst* arg))]
+    [(Quote fname) expr]
+    [(VCall fexpr pexpr) (VCall (subst* fexpr) (subst* pexpr))]))
 
 #| Formal specs for `eval':
      eval(N)             = N
@@ -223,11 +233,22 @@
              "need a boolean when evaluating ~s, but got ~s"
              expr result))))
 
-(: value->algae : (U Number Boolean) -> ALGAE)
+(: eval-symbol : ALGAE PROGRAM -> Symbol)
+;; helper for `eval': verifies that the result is a symbol
+(define (eval-symbol expr prog)
+  (let ([result (eval expr prog)])
+    (if (symbol? result)
+      result
+      (error 'eval-symbol
+             "need a symbol when evaluating ~s, but got ~s"
+             expr result))))
+
+(: value->algae : VAL -> ALGAE)
 ;; converts a value to an ALGAE value (so it can be used with `subst')
 (define (value->algae val)
   (cond [(number?  val) (Num val)]
-        [(boolean? val) (Bool val)]))
+        [(boolean? val) (Bool val)]
+        [(symbol?  val) (Quote val)]))
 
 (: lookup-fun : Symbol PROGRAM -> FUN)
 ;; looks up a FUN instance in a PROGRAM given its name
@@ -241,7 +262,7 @@
        [#f (error 'lookup-fun "could not find \"~s\" in definition" name)]
        [(cons first rest) first])]))
 
-(: eval : ALGAE PROGRAM -> (U Number Boolean))
+(: eval : ALGAE PROGRAM -> VAL)
 ;; evaluates ALGAE expressions by reducing them to numbers or booleans
 (define (eval expr prog)
   ;; convenient helper
@@ -280,15 +301,18 @@
     [(Call id arg)
      (cases (lookup-fun id prog)
        [(Fun fname param body)
-        (eval (subst body param (value->algae (eval arg prog))) prog)])]))
+        (eval (subst body param (value->algae (eval arg prog))) prog)])]
+    [(Quote id) id]
+    [(VCall fexpr pexpr)
+     (eval (Call (eval-symbol fexpr prog) pexpr) prog)]))
 
-(: run : String (U Number Boolean) -> (U Number Boolean))
+(: run : String VAL -> VAL)
 ;; evaluate an ALGAE program contained in a string
 (define (run str arg)
   (let ([prog (parse str)])
     (eval (Call 'main (value->algae arg)) prog)))
 
-(: run* : String -> (U Number Boolean))
+(: run* : String -> VAL)
 ;; a version for testing simple ALGAE expressions without
 ;; function calls
 (define (run* str)
@@ -399,3 +423,44 @@
 
 (test (run "{abcd {fun main {n} n}}" 5) =error>
       "parse-program:: error form in program: (abcd (fun main (n) n))")
+
+;; test for vcall and quote
+(test (run "
+{program
+  {fun even? {n}
+    {if {= 0 n} True {call odd? {- n 1}}}}
+  {fun odd? {n}
+    {if {= 0 n} False {call even? {- n 1}}}}
+  {fun do_even {n}
+    {/ n 2}}
+  {fun do_odd {n}
+    {+ 1 {* n 3}}}
+  {fun main {n}
+    {if {= n 1}
+      1
+      {+ 1 {call main
+                 {vcall {if {call even? n}
+                          {quote do_even}
+                          {quote do_odd}}
+                        n}}}}}}
+"
+           5) => 6)
+
+;; test for running bad function lookup in vcall
+(test (run "
+{program
+  {fun main {n} {vcall {+ 1 2} 4}}
+}
+" 99) =error>
+      (string-append "eval-symbol: need a symbol when"
+                     " evaluating (Add ((Num 1) (Num 2))), but got 3"))
+
+;; test for passing symbol argument to run
+(test (run "
+{program
+   {fun double {n} {* n 2}}
+   {fun plus1 {n} {+ n 1}}
+   {fun main {name} {vcall name 8}}}"
+           'double) => 16)
+
+(define minutes-spent 177)
