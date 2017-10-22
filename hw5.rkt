@@ -60,7 +60,8 @@
 (define (parse-fun sexpr)
   (match sexpr
     [(list 'fun (symbol: fname) (list (symbol: param)) body)
-     (Fun fname param (parse-expr body))]))
+     (Fun fname param (parse-expr body))]
+    [else (error 'parse-fun "error form in function define: ~s" sexpr)]))
 
 (: parse-expr : Sexpr -> ALGAE)
 ;; parses s-expressions into ALGAEs
@@ -112,7 +113,7 @@
 ;; Translates `{or E1 E2}' syntax to core Algae.
 (define (Or args)
   (cond
-    ((= (length args) 0) (Bool #t))
+    ((= (length args) 0) (Bool #f))
     ((= (length args) 1) (car args))
     (else (If (car args)
               (Bool #t)
@@ -237,7 +238,7 @@
   (cases prog
     [(Funs lst)
      (match (memf predicate lst)
-       [#f (error 'lookup-fun "could not find ~s in definition" name)]
+       [#f (error 'lookup-fun "could not find \"~s\" in definition" name)]
        [(cons first rest) first])]))
 
 (: eval : ALGAE PROGRAM -> (U Number Boolean))
@@ -279,7 +280,7 @@
     [(Call id arg)
      (cases (lookup-fun id prog)
        [(Fun fname param body)
-        (eval (subst body id (value->algae (eval arg prog))) prog)])]))
+        (eval (subst body param (value->algae (eval arg prog))) prog)])]))
 
 (: run : String (U Number Boolean) -> (U Number Boolean))
 ;; evaluate an ALGAE program contained in a string
@@ -365,3 +366,36 @@
 ;; test 3b
 (test (not (run* "{and True True True False}")))
 (test (run* "{or True True True False}"))
+(test (not (run* "{or}")))
+(test (run* "{and}"))
+
+;; test for running whole program
+(test (run "
+{program
+  {fun even? {n}
+    {if {= 0 n} True {call odd? {- n 1}}}}
+  {fun odd? {n}
+    {if {= 0 n} False {call even? {- n 1}}}}
+  {fun main {n}
+    {if {= n 1}
+      1
+      {+ 1 {call main
+                 {if {call even? n}
+                   {/ n 2}
+                   {+ 1 {* n 3}}}}}}}}"
+           5) => 6)
+
+;; test for error related to program
+(test (run "
+{program
+  {fun name1 {n} n}
+  {fun main {n} {call other n}}
+}
+" 4) =error> "lookup-fun: could not find \"other\" in definition")
+
+(test (run "
+{program fun main {n} n}
+" 4) =error> "parse-fun: error form in function define: fun")
+
+(test (run "{abcd {fun main {n} n}}" 5) =error>
+      "parse-program:: error form in program: (abcd (fun main (n) n))")
