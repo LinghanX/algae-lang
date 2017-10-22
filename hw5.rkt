@@ -118,10 +118,10 @@
               (Bool #t)
               (Or (cdr args))))))
 
-(: parse : String -> ALGAE)
-;; parses a string containing an ALGAE expression to an ALGAE AST
+(: parse : String -> PROGRAM)
+;; parses a whole program
 (define (parse str)
-  (parse-expr (string->sexpr str)))
+  (parse-program (string->sexpr str)))
 
 #| Formal specs for `subst':
    (`N' is a <num>, `B' is True/False, `E1', `E2' are <ALGAE>s, `x' is
@@ -202,20 +202,20 @@
      eval({call id E})   = error if id is not defined
 |#
 
-(: eval-number : ALGAE -> Number)
+(: eval-number : ALGAE PROGRAM -> Number)
 ;; helper for `eval': verifies that the result is a number
-(define (eval-number expr)
-  (let ([result (eval expr)])
+(define (eval-number expr prog)
+  (let ([result (eval expr prog)])
     (if (number? result)
       result
       (error 'eval-number
              "need a number when evaluating ~s, but got ~s"
              expr result))))
 
-(: eval-boolean : ALGAE -> Boolean)
+(: eval-boolean : ALGAE PROGRAM -> Boolean)
 ;; helper for `eval': verifies that the result is a boolean
-(define (eval-boolean expr)
-  (let ([result (eval expr)])
+(define (eval-boolean expr prog)
+  (let ([result (eval expr prog)])
     (if (boolean? result)
       result
       (error 'eval-boolean
@@ -240,24 +240,26 @@
        [#f (error 'lookup-fun "could not find ~s in definition" name)]
        [(cons first rest) first])]))
 
-(: eval : ALGAE -> (U Number Boolean))
+(: eval : ALGAE PROGRAM -> (U Number Boolean))
 ;; evaluates ALGAE expressions by reducing them to numbers or booleans
-(define (eval expr)
+(define (eval expr prog)
   ;; convenient helper
+  (: fold-eval-number : ALGAE -> Number)
+  (define (fold-eval-number x) (eval-number x prog))
   (: fold-evals : (Number Number -> Number) Number (Listof ALGAE)
                   -> Number)
   (define (fold-evals f init exprs)
-    (foldl f init (map eval-number exprs)))
+    (foldl f init (map fold-eval-number exprs)))
   (cases expr
     [(Num  n) n]
     [(Bool b) b]
     [(Add args) (fold-evals + 0 args)]
     [(Mul args) (fold-evals * 1 args)]
     [(Sub fst args)
-     (let ([x (eval-number fst)])  ; need to evaluate in both cases
+     (let ([x (eval-number fst prog)])  ; need to evaluate in both cases
        (if (null? args) (- x) (- x (fold-evals + 0 args))))]
     [(Div fst args)
-     (let ([x   (eval-number fst)] ; need to evaluate in both cases
+     (let ([x   (eval-number fst prog)] ; need to evaluate in both cases
            [div (fold-evals * 1 args)])
        (cond [(zero? (if (null? args) x div))
               (error '/ "division by zero error")]
@@ -267,24 +269,29 @@
      (eval (subst bound-body
                   bound-id
                   ;; see the above `value->algae' helper
-                  (value->algae (eval named-expr))))]
+                  (value->algae (eval named-expr prog)))
+           prog)]
     [(Id name) (error 'eval "free identifier: ~s" name)]
-    [(Less   lhs rhs) (<  (eval-number lhs) (eval-number rhs))]
-    [(Equal  lhs rhs) (=  (eval-number lhs) (eval-number rhs))]
-    [(LessEq lhs rhs) (<= (eval-number lhs) (eval-number rhs))]
-    [(If cond then else) (eval (if (eval-boolean cond) then else))]
-    [(Call id arg) (error 'not-emplemented "need call impl")]))
+    [(Less   lhs rhs) (<  (eval-number lhs prog) (eval-number rhs prog))]
+    [(Equal  lhs rhs) (=  (eval-number lhs prog) (eval-number rhs prog))]
+    [(LessEq lhs rhs) (<= (eval-number lhs prog) (eval-number rhs prog))]
+    [(If cond then else) (eval (if (eval-boolean cond prog) then else) prog)]
+    [(Call id arg)
+     (cases (lookup-fun id prog)
+       [(Fun fname param body)
+        (eval (subst body id (value->algae (eval arg prog))) prog)])]))
 
-(: run : String -> (U Number Boolean))
+(: run : String (U Number Boolean) -> (U Number Boolean))
 ;; evaluate an ALGAE program contained in a string
-(define (run str)
-  (eval (parse str)))
+(define (run str arg)
+  (let ([prog (parse str)])
+    (eval (Call 'main (value->algae arg)) prog)))
 
 (: run* : String -> (U Number Boolean))
 ;; a version for testing simple ALGAE expressions without
 ;; function calls
 (define (run* str)
-  (eval (parse-expr (string->sexpr str)) #|(Funs null)|#))
+  (eval (parse-expr (string->sexpr str)) (Funs null)))
 
 
 ;; tests (for simple expressions)
