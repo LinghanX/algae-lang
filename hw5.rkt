@@ -19,6 +19,7 @@
                  | { not <ALGAE> }
                  | { and <ALGAE> ... }
                  | { or <ALGAE> ... }
+                 | { call <id> <ALGAE> }
 |#
 
 
@@ -36,7 +37,8 @@
   [Less   ALGAE ALGAE]
   [Equal  ALGAE ALGAE]
   [LessEq ALGAE ALGAE]
-  [If     ALGAE ALGAE ALGAE])
+  [If     ALGAE ALGAE ALGAE]
+  [Call   Symbol ALGAE])
 
 ;; FUN abstract syntax trees
 (define-type FUN
@@ -88,6 +90,7 @@
     [(list 'and args ...) (And (parse-sexprs args))]
     [(list 'or  args ...) (Or  (parse-sexprs args))]
     [(list 'not arg)     (Not (parse-expr arg))]
+    [(list 'call (symbol: fname) argument) (Call fname (parse-expr argument))]
     [else (error 'parse-sexpr "bad syntax in ~s" sexpr)]))
 
 (: Not : ALGAE -> ALGAE)
@@ -137,6 +140,7 @@
       {=  E1 E2}[v/x]       = {=  E1[v/x] E2[v/x]}
       {<= E1 E2}[v/x]       = {<= E1[v/x] E2[v/x]}
       {if E1 E2 E3}[v/x]    = {if E1[v/x] E2[v/x] E3[v/x]}
+      {call id E}[v/x]      = {call id E[v/x]}
 |#
 
 (: subst : ALGAE Symbol ALGAE -> ALGAE)
@@ -168,7 +172,9 @@
     [(Equal  lhs rhs) (Equal  (subst* lhs) (subst* rhs))]
     [(LessEq lhs rhs) (LessEq (subst* lhs) (subst* rhs))]
     [(If cond then else)
-     (If (subst* cond) (subst* then) (subst* else))]))
+     (If (subst* cond) (subst* then) (subst* else))]
+    [(Call fname arg)
+     (Call fname (subst* arg))]))
 
 #| Formal specs for `eval':
      eval(N)             = N
@@ -191,6 +197,9 @@
      eval({or E1 E2})    = eval({if E1 True E2})
      evalN(E) = eval(E) if it is a number, error otherwise
      evalB(E) = eval(E) if it is a boolean, error otherwise
+     eval({call id E})   = eval(Efun[eval(E)/x])
+         where {fun id {x} Efun} is defined before
+     eval({call id E})   = error if id is not defined
 |#
 
 (: eval-number : ALGAE -> Number)
@@ -219,17 +228,17 @@
   (cond [(number?  val) (Num val)]
         [(boolean? val) (Bool val)]))
 
-(: eval-and : ALGAE Boolean -> Boolean)
-(define (eval-and arg b)
-  (if b
-      (eval-boolean arg)
-      #f))
-
-(: eval-or : ALGAE Boolean -> Boolean)
-(define (eval-or arg b)
-  (if b
-      #t
-      (eval-boolean arg)))
+(: lookup-fun : Symbol PROGRAM -> FUN)
+;; looks up a FUN instance in a PROGRAM given its name
+(define (lookup-fun name prog)
+  (: predicate : FUN -> Boolean)
+  (define (predicate x)
+    (cases x [(Fun fname param body) (eq? fname name)]))
+  (cases prog
+    [(Funs lst)
+     (match (memf predicate lst)
+       [#f (error 'lookup-fun "could not find ~s in definition" name)]
+       [(cons first rest) first])]))
 
 (: eval : ALGAE -> (U Number Boolean))
 ;; evaluates ALGAE expressions by reducing them to numbers or booleans
@@ -263,7 +272,8 @@
     [(Less   lhs rhs) (<  (eval-number lhs) (eval-number rhs))]
     [(Equal  lhs rhs) (=  (eval-number lhs) (eval-number rhs))]
     [(LessEq lhs rhs) (<= (eval-number lhs) (eval-number rhs))]
-    [(If cond then else) (eval (if (eval-boolean cond) then else))]))
+    [(If cond then else) (eval (if (eval-boolean cond) then else))]
+    [(Call id arg) (error 'not-emplemented "need call impl")]))
 
 (: run : String -> (U Number Boolean))
 ;; evaluate an ALGAE program contained in a string
