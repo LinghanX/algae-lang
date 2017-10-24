@@ -213,6 +213,31 @@ Evaluation rules:
   [CNumV Number]
   [CFunV Symbol CORE CENV])
 
+;; can be designed as an function Symbol -> Integer
+;; however, using an symbol list is easier to debug than clojure by composing
+;; functions
+(define-type DE-ENV = (Listof Symbol))
+
+(: var->index-helper : DE-ENV Symbol Integer -> Integer)
+(define (var->index-helper de-env symbol depth)
+  (match de-env
+    [(cons first rest)
+     (if (eq? first symbol)
+         depth
+         (var->index-helper rest symbol (add1 depth)))]
+    ['() (error 'var-binding "unbound identifier: ~s" symbol)]))
+
+(: var->index : DE-ENV Symbol -> Integer)
+(define (var->index de-env symbol)
+  (var->index-helper de-env symbol 0))
+
+(: do-empty-env : DE-ENV)
+(define do-empty-env '())
+
+(: do-extend : DE-ENV Symbol -> DE-ENV)
+(define (do-extend de-env symbol)
+  (cons symbol de-env))
+
 (: Clookup : Symbol CENV -> CVAL)
 ;; lookup a symbol in an environment, return its value or throw an
 ;; error if it isn't bound
