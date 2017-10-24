@@ -11,8 +11,8 @@ The grammar:
             | { / <BRANG> <BRANG> }
             | { with { <id> <BRANG> } <BRANG> }
             | <id>
-            | { fun { <id> } <BRANG> }
-            | { call <BRANG> <BRANG> }
+            | { fun { <id> <id> ... } <BRANG> }
+            | { call <BRANG> <BRANG> <BRANG> ... }
 
 Evaluation rules:
   eval(N,env)                = N
@@ -37,15 +37,14 @@ Evaluation rules:
   [Div  BRANG BRANG]
   [Id   Symbol]
   [With Symbol BRANG BRANG]
-  [Fun  Symbol BRANG]
-  [Call BRANG BRANG])
+  [Fun  (Listof Symbol) BRANG]
+  [Call BRANG (Listof BRANG)])
 
 (: parse-sexpr : Sexpr -> BRANG)
 ;; parses s-expressions into BRANGs
 (define (parse-sexpr sexpr)
   (match sexpr
     [(number: n)    (Num n)]
-    [(symbol: name) (Id name)]
     [(cons 'with more)
      (match sexpr
        [(list 'with (list (symbol: name) named) body)
@@ -53,15 +52,17 @@ Evaluation rules:
        [else (error 'parse-sexpr "bad `with' syntax in ~s" sexpr)])]
     [(cons 'fun more)
      (match sexpr
-       [(list 'fun (list (symbol: name)) body)
-        (Fun name (parse-sexpr body))]
+       [(list 'fun (list (symbol: first-name) (symbol: rest-names) ...) body)
+        (Fun (cons first-name rest-names) (parse-sexpr body))]
        [else (error 'parse-sexpr "bad `fun' syntax in ~s" sexpr)])]
     [(list '+ lhs rhs) (Add (parse-sexpr lhs) (parse-sexpr rhs))]
     [(list '- lhs rhs) (Sub (parse-sexpr lhs) (parse-sexpr rhs))]
     [(list '* lhs rhs) (Mul (parse-sexpr lhs) (parse-sexpr rhs))]
     [(list '/ lhs rhs) (Div (parse-sexpr lhs) (parse-sexpr rhs))]
-    [(list 'call fun arg)
-                       (Call (parse-sexpr fun) (parse-sexpr arg))]
+    [(list 'call fun more ...)
+     (if (null? more) (error 'parse-sexpr "call need argument: ~s" sexpr)
+         (Call (parse-sexpr fun) (map parse-sexpr more)))]
+    [(symbol: name) (Id name)]
     [else (error 'parse-sexpr "bad syntax in ~s" sexpr)]))
 
 (: parse : String -> BRANG)
@@ -198,9 +199,30 @@ Evaluation rules:
     [(Id name) (CRef (var->index de-env name))]
     [(With name def body)
      ;; delegate the with statement into a call of lambda expression
-     (recur (Call (Fun name body) def))]
-    [(Fun param body) (CFun (brang->core body (do-extend de-env param)))]
-    [(Call fname argument) (CCall (recur fname) (recur argument))]))
+     (recur (Call (Fun (list name) body) (list def)))]
+    [(Fun param body) (build-cfun param body de-env)]
+    [(Call fexpr argument) (build-ccall fexpr (reverse argument) de-env)]))
+
+;; helper function for recursively build the CFun and CCall with more arguments
+;; this is used to build function call, transform:
+;; λ(a b c d) E -> λ(a)λ(b)λ(c)λ(d) E
+(: build-cfun : (Listof Symbol) BRANG DE-ENV -> CORE)
+(define (build-cfun params body de-env)
+  (if (null? params)
+      (brang->core body de-env)
+      (CFun (build-cfun (rest params)
+                        body
+                        (do-extend de-env (first params))))))
+
+;; helper function, need a reverse to call on arg-exprs before pass to
+;; this function to get right passing order, THIS FUNCTION DO:
+;; {call F A B C D} to {call {call {call {call F D} C} B} A}
+(: build-ccall : BRANG (Listof BRANG) DE-ENV -> CORE)
+(define (build-ccall fexpr arg-exprs de-env)
+  (if (null? arg-exprs)
+      (brang->core fexpr de-env)
+      (CCall (build-ccall fexpr (rest arg-exprs) de-env)
+             (brang->core (first arg-exprs) de-env))))
 
 ;; defines the run, actually the run can return an closure of function
 (: run : String -> (U Number CVAL))
@@ -254,11 +276,31 @@ Evaluation rules:
 ;; test error fun form
 (test (run "{fun {x} {y} {+ x y}}") =error>
       "parse-sexpr: bad `fun' syntax in (fun (x) (y) (+ x y))")
-;; test bad syntax by using a call with more arguments
-(test (run "{call {fun {x} x} 1 2 3}") =error>
-      "parse-sexpr: bad syntax in (call (fun (x) x) 1 2 3)")
+;; test bad syntax by using a call with zero argument
+(test (run "{call {fun {x} x}}") =error>
+      "parse-sexpr: call need argument: (call (fun (x) x))")
+;; test bad syntax
+(test (run "{add bcd sad edc}") =error>
+      "parse-sexpr: bad syntax in (add bcd sad edc)")
 ;; test runtime type error
 (test (run "{+ {fun {x} x} 2}") =error>
       "arith-op: expected a number, got: (CFunV (CRef 0) ())")
 (test (run "{call 1 2}") =error>
       "eval: `call' expects a function, got: (CNumV 1)")
+
+;; test functions that take many arguments
+(test (run "
+{call
+  {call
+    {fun {a b c d}
+      {fun {e f g}
+        {/ {+ a {+ b {+ c {+ d {+ e {+ f g}}}}}} 7}
+      }
+    }
+    1 2 3 4
+  }
+  5 6 7
+}") => 4)
+
+(test (run "{call {fun {x y z h} {+ {* x y} {/ z h}}} 3 4 18 6}")
+      => (+ (* 3 4) (/ 18 6)))
