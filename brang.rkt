@@ -106,9 +106,6 @@ Evaluation rules:
   [CDiv  CORE CORE]
   ;; the integer value is the index
   [CRef  Integer]
-  ;; first is E1, second is E2 in with statement like {with {x E1} E2}
-  ;; variable name is ignored and is not needed
-  [CWith CORE CORE]
   ;; only contain function body, the name is not needed
   [CFun  CORE]
   ;; first is the function value, second is the parameter to function
@@ -170,9 +167,6 @@ Evaluation rules:
     [(CSub l r) (Carith-op - (Ceval l env) (Ceval r env))]
     [(CMul l r) (Carith-op * (Ceval l env) (Ceval r env))]
     [(CDiv l r) (Carith-op / (Ceval l env) (Ceval r env))]
-    [(CWith with-expr bound-body)
-     (Ceval bound-body
-            (cons (Ceval with-expr env) env))]
     [(CRef index) (list-ref env index)]
     [(CFun bound-body)
      (CFunV bound-body env)]
@@ -203,8 +197,8 @@ Evaluation rules:
     [(Div br1 br2) (CDiv (recur br1) (recur br2))]
     [(Id name) (CRef (var->index de-env name))]
     [(With name def body)
-     (CWith (recur def)
-            (brang->core body (do-extend de-env name)))]
+     ;; delegate the with statement into a call of lambda expression
+     (recur (Call (Fun name body) def))]
     [(Fun param body) (CFun (brang->core body (do-extend de-env param)))]
     [(Call fname argument) (CCall (recur fname) (recur argument))]))
 
