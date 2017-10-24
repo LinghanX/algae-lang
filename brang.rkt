@@ -121,30 +121,18 @@ Evaluation rules:
 
 (define-type ENV = (Listof CVAL))
 
-;; can be designed as an function Symbol -> Integer
-;; however, using an symbol list is easier to debug than clojure by composing
-;; functions
-(define-type DE-ENV = (Listof Symbol))
+(define-type DE-ENV = (Symbol -> Integer))
 
-(: var->index-helper : DE-ENV Symbol Integer -> Integer)
-(define (var->index-helper de-env symbol depth)
-  (match de-env
-    [(cons first rest)
-     (if (eq? first symbol)
-         depth
-         (var->index-helper rest symbol (add1 depth)))]
-    ['() (error 'var-binding "unbound identifier: ~s" symbol)]))
+(: de-empty-env : DE-ENV)
+(define (de-empty-env name)
+  (error 'var-binding "unbound identifier: ~s" name))
 
-(: var->index : DE-ENV Symbol -> Integer)
-(define (var->index de-env symbol)
-  (var->index-helper de-env symbol 0))
-
-(: do-empty-env : DE-ENV)
-(define do-empty-env '())
-
-(: do-extend : DE-ENV Symbol -> DE-ENV)
-(define (do-extend de-env symbol)
-  (cons symbol de-env))
+(: de-extend : DE-ENV Symbol -> DE-ENV)
+(define (de-extend de-env symbol)
+  (lambda (name)
+    (if (eq? name symbol)
+        0
+        (+ 1 (de-env name)))))
 
 (: CNumV->number : CVAL -> Number)
 ;; convert a CORE runtime numeric value to a Racket one
@@ -159,31 +147,27 @@ Evaluation rules:
 (define (Carith-op op val1 val2)
   (CNumV (op (CNumV->number val1) (CNumV->number val2))))
 
-(: Ceval : CORE ENV -> CVAL)
+(: eval : CORE ENV -> CVAL)
 ;; evaluates CORE expressions by reducing them to values
-(define (Ceval expr env)
+(define (eval expr env)
   (cases expr
     [(CNum n) (CNumV n)]
-    [(CAdd l r) (Carith-op + (Ceval l env) (Ceval r env))]
-    [(CSub l r) (Carith-op - (Ceval l env) (Ceval r env))]
-    [(CMul l r) (Carith-op * (Ceval l env) (Ceval r env))]
-    [(CDiv l r) (Carith-op / (Ceval l env) (Ceval r env))]
+    [(CAdd l r) (Carith-op + (eval l env) (eval r env))]
+    [(CSub l r) (Carith-op - (eval l env) (eval r env))]
+    [(CMul l r) (Carith-op * (eval l env) (eval r env))]
+    [(CDiv l r) (Carith-op / (eval l env) (eval r env))]
     [(CRef index) (list-ref env index)]
     [(CFun bound-body)
      (CFunV bound-body env)]
     [(CCall fun-expr arg-expr)
-     (let* ([Cfval (Ceval fun-expr env)]
-            [Argument (Ceval arg-expr env)])
+     (let* ([Cfval (eval fun-expr env)]
+            [Argument (eval arg-expr env)])
        (cases Cfval
          [(CFunV bound-body f-env)
-          (Ceval bound-body
+          (eval bound-body
                 (cons Argument f-env))]
          [else (error 'eval "`call' expects a function, got: ~s"
                             Cfval)]))]))
-
-;; the preprocessor transform brang ast to core ast using helper defined above
-(: preprocessor : BRANG -> CORE)
-(define (preprocessor brang) (brang->core brang do-empty-env))
 
 (: brang->core : BRANG DE-ENV -> CORE)
 (define (brang->core brang de-env)
@@ -196,12 +180,16 @@ Evaluation rules:
     [(Sub br1 br2) (CSub (recur br1) (recur br2))]
     [(Mul br1 br2) (CMul (recur br1) (recur br2))]
     [(Div br1 br2) (CDiv (recur br1) (recur br2))]
-    [(Id name) (CRef (var->index de-env name))]
+    [(Id name) (CRef (de-env name))]
     [(With name def body)
      ;; delegate the with statement into a call of lambda expression
      (recur (Call (Fun (list name) body) (list def)))]
     [(Fun param body) (build-cfun param body de-env)]
     [(Call fexpr argument) (build-ccall fexpr (reverse argument) de-env)]))
+
+;; the preprocessor transform brang ast to core ast using helper defined above
+(: preprocess : BRANG DE-ENV -> CORE)
+(define preprocess brang->core)
 
 ;; helper function for recursively build the CFun and CCall with more arguments
 ;; this is used to build function call, transform:
@@ -212,7 +200,7 @@ Evaluation rules:
       (brang->core body de-env)
       (CFun (build-cfun (rest params)
                         body
-                        (do-extend de-env (first params))))))
+                        (de-extend de-env (first params))))))
 
 ;; helper function, need a reverse to call on arg-exprs before pass to
 ;; this function to get right passing order, THIS FUNCTION DO:
@@ -227,7 +215,7 @@ Evaluation rules:
 ;; defines the run, actually the run can return an closure of function
 (: run : String -> (U Number CVAL))
 (define (run str)
-  (let ([result (Ceval (preprocessor (parse str)) '())])
+  (let ([result (eval (preprocess (parse str) de-empty-env) '())])
     (cases result
       [(CNumV n) n]
       [(CFunV core env) result])))
@@ -304,3 +292,5 @@ Evaluation rules:
 
 (test (run "{call {fun {x y z h} {+ {* x y} {/ z h}}} 3 4 18 6}")
       => (+ (* 3 4) (/ 18 6)))
+
+(define minutes-spent 210)
