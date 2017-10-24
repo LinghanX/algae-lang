@@ -69,71 +69,6 @@ Evaluation rules:
 (define (parse str)
   (parse-sexpr (string->sexpr str)))
 
-;; Types for environments, values, and a lookup function
-
-(define-type ENV
-  [EmptyEnv]
-  [Extend Symbol VAL ENV])
-
-(define-type VAL
-  [NumV Number]
-  [FunV Symbol BRANG ENV])
-
-(: lookup : Symbol ENV -> VAL)
-;; lookup a symbol in an environment, return its value or throw an
-;; error if it isn't bound
-(define (lookup name env)
-  (cases env
-    [(EmptyEnv) (error 'lookup "no binding for ~s" name)]
-    [(Extend id val rest-env)
-     (if (eq? id name) val (lookup name rest-env))]))
-
-(: NumV->number : VAL -> Number)
-;; convert a BRANG runtime numeric value to a Racket one
-(define (NumV->number val)
-  (cases val
-    [(NumV n) n]
-    [else (error 'arith-op "expected a number, got: ~s" val)]))
-
-(: arith-op : (Number Number -> Number) VAL VAL -> VAL)
-;; gets a Racket numeric binary operator, and uses it within a NumV
-;; wrapper
-(define (arith-op op val1 val2)
-  (NumV (op (NumV->number val1) (NumV->number val2))))
-
-(: eval : BRANG ENV -> VAL)
-;; evaluates BRANG expressions by reducing them to values
-(define (eval expr env)
-  (cases expr
-    [(Num n) (NumV n)]
-    [(Add l r) (arith-op + (eval l env) (eval r env))]
-    [(Sub l r) (arith-op - (eval l env) (eval r env))]
-    [(Mul l r) (arith-op * (eval l env) (eval r env))]
-    [(Div l r) (arith-op / (eval l env) (eval r env))]
-    [(With bound-id named-expr bound-body)
-     (eval bound-body
-           (Extend bound-id (eval named-expr env) env))]
-    [(Id name) (lookup name env)]
-    [(Fun bound-id bound-body)
-     (FunV bound-id bound-body env)]
-    [(Call fun-expr arg-expr)
-     (let ([fval (eval fun-expr env)])
-       (cases fval
-         [(FunV bound-id bound-body f-env)
-          (eval bound-body
-                (Extend bound-id (eval arg-expr env) f-env))]
-         [else (error 'eval "`call' expects a function, got: ~s"
-                            fval)]))]))
-
-(: run : String -> Number)
-;; evaluate a BRANG program contained in a string
-(define (run str)
-  (let ([result (eval (parse str) (EmptyEnv))])
-    (cases result
-      [(NumV n) n]
-      [else (error 'run "evaluation returned a non-number: ~s"
-                   result)])))
-
 ;; ** The CORE interpreter, using environments
 
 #|
@@ -169,49 +104,24 @@ Evaluation rules:
   [CSub  CORE CORE]
   [CMul  CORE CORE]
   [CDiv  CORE CORE]
-  [CId   Symbol]
-  [CWith Symbol CORE CORE]
-  [CFun  Symbol CORE]
+  ;; the integer value is the index
+  [CRef  Integer]
+  ;; first is E1, second is E2 in with statement like {with {x E1} E2}
+  ;; variable name is ignored and is not needed
+  [CWith CORE CORE]
+  ;; only contain function body, the name is not needed
+  [CFun  CORE]
+  ;; first is the function value, second is the parameter to function
   [CCall CORE CORE])
 
-(: Cparse-sexpr : Sexpr -> CORE)
-;; parses s-expressions into COREs
-(define (Cparse-sexpr csexpr)
-  (match csexpr
-    [(number: n)    (CNum n)]
-    [(symbol: name) (CId name)]
-    [(cons 'with more)
-     (match csexpr
-       [(list 'with (list (symbol: name) named) body)
-        (CWith name (Cparse-sexpr named) (Cparse-sexpr body))]
-       [else (error 'Cparse-sexpr "bad `with' syntax in ~s" csexpr)])]
-    [(cons 'fun more)
-     (match csexpr
-       [(list 'fun (list (symbol: name)) body)
-        (CFun name (Cparse-sexpr body))]
-       [else (error 'Cparse-sexpr "bad `fun' syntax in ~s" csexpr)])]
-    [(list '+ lhs rhs) (CAdd (Cparse-sexpr lhs) (Cparse-sexpr rhs))]
-    [(list '- lhs rhs) (CSub (Cparse-sexpr lhs) (Cparse-sexpr rhs))]
-    [(list '* lhs rhs) (CMul (Cparse-sexpr lhs) (Cparse-sexpr rhs))]
-    [(list '/ lhs rhs) (CDiv (Cparse-sexpr lhs) (Cparse-sexpr rhs))]
-    [(list 'call fun arg)
-                       (CCall (Cparse-sexpr fun) (Cparse-sexpr arg))]
-    [else (error 'Cparse-sexpr "bad syntax in ~s" csexpr)]))
-
-(: Cparse : String -> CORE)
-;; parses a string containing a CORE expression to a CORE AST
-(define (Cparse str)
-  (Cparse-sexpr (string->sexpr str)))
-
-;; Types for environments, values, and a lookup function
-
-(define-type CENV
-  [CEmptyEnv]
-  [CExtend Symbol CVAL CENV])
+;; Types for environments, values, and a lookup function for core
 
 (define-type CVAL
   [CNumV Number]
-  [CFunV Symbol CORE CENV])
+  ;; there is no need for an parameter name
+  [CFunV CORE ENV])
+
+(define-type ENV = (Listof CVAL))
 
 ;; can be designed as an function Symbol -> Integer
 ;; however, using an symbol list is easier to debug than clojure by composing
@@ -238,15 +148,6 @@ Evaluation rules:
 (define (do-extend de-env symbol)
   (cons symbol de-env))
 
-(: Clookup : Symbol CENV -> CVAL)
-;; lookup a symbol in an environment, return its value or throw an
-;; error if it isn't bound
-(define (Clookup name env)
-  (cases env
-    [(CEmptyEnv) (error 'Clookup "no binding for ~s" name)]
-    [(CExtend id val rest-env)
-     (if (eq? id name) val (Clookup name rest-env))]))
-
 (: CNumV->number : CVAL -> Number)
 ;; convert a CORE runtime numeric value to a Racket one
 (define (CNumV->number val)
@@ -260,7 +161,7 @@ Evaluation rules:
 (define (Carith-op op val1 val2)
   (CNumV (op (CNumV->number val1) (CNumV->number val2))))
 
-(: Ceval : CORE CENV -> CVAL)
+(: Ceval : CORE ENV -> CVAL)
 ;; evaluates CORE expressions by reducing them to values
 (define (Ceval expr env)
   (cases expr
@@ -269,31 +170,54 @@ Evaluation rules:
     [(CSub l r) (Carith-op - (Ceval l env) (Ceval r env))]
     [(CMul l r) (Carith-op * (Ceval l env) (Ceval r env))]
     [(CDiv l r) (Carith-op / (Ceval l env) (Ceval r env))]
-    [(CWith bound-id named-expr bound-body)
+    [(CWith with-expr bound-body)
      (Ceval bound-body
-           (CExtend bound-id (Ceval named-expr env) env))]
-    [(CId name) (Clookup name env)]
-    [(CFun bound-id bound-body)
-     (CFunV bound-id bound-body env)]
+            (cons (Ceval with-expr env) env))]
+    [(CRef index) (list-ref env index)]
+    [(CFun bound-body)
+     (CFunV bound-body env)]
     [(CCall fun-expr arg-expr)
-     (let ([Cfval (Ceval fun-expr env)])
+     (let* ([Cfval (Ceval fun-expr env)]
+            [Argument (Ceval arg-expr env)])
        (cases Cfval
-         [(CFunV bound-id bound-body f-env)
+         [(CFunV bound-body f-env)
           (Ceval bound-body
-                (CExtend bound-id (Ceval arg-expr env) f-env))]
+                (cons Argument f-env))]
          [else (error 'eval "`call' expects a function, got: ~s"
                             Cfval)]))]))
 
-(: Crun : String -> Number)
-;; evaluate a CORE program contained in a string
-(define (Crun str)
-  (let ([result (Ceval (Cparse str) (CEmptyEnv))])
+;; the preprocessor transform brang ast to core ast using helper defined above
+(: preprocessor : BRANG -> CORE)
+(define (preprocessor brang) (brang->core brang do-empty-env))
+
+(: brang->core : BRANG DE-ENV -> CORE)
+(define (brang->core brang de-env)
+  (: recur : BRANG -> CORE)
+  ;; a shortcur from (brang->core x de-env) to (recur x)
+  (define (recur x) (brang->core x de-env))
+  (cases brang
+    [(Num n) (CNum n)]
+    [(Add br1 br2) (CAdd (recur br1) (recur br2))]
+    [(Sub br1 br2) (CSub (recur br1) (recur br2))]
+    [(Mul br1 br2) (CMul (recur br1) (recur br2))]
+    [(Div br1 br2) (CDiv (recur br1) (recur br2))]
+    [(Id name) (CRef (var->index de-env name))]
+    [(With name def body)
+     (CWith (recur def)
+            (brang->core body (do-extend de-env name)))]
+    [(Fun param body) (CFun (brang->core body (do-extend de-env param)))]
+    [(Call fname argument) (CCall (recur fname) (recur argument))]))
+
+;; defines the run, actually the run can return an closure of function
+(: run : String -> (U Number CVAL))
+(define (run str)
+  (let ([result (Ceval (preprocessor (parse str)) '())])
     (cases result
       [(CNumV n) n]
-      [else (error 'run "evaluation returned a non-number: ~s"
-                   result)])))
-
+      [(CFunV core env) result])))
+ 
 ;; tests for Flang
+
 (test (run "{call {fun {x} {+ x 1}} 4}")
       => 5)
 (test (run "{with {add3 {fun {x} {+ x 3}}}
@@ -322,4 +246,25 @@ Evaluation rules:
                   123}")
       => 124)
 
+;; more tests for the language
+(test (run "{- {* 5 7} {/ 68 2}}") => 1)
+(test (run "{call {fun {x} {fun {y} {+ x y}}} 8}") =>
+      (CFunV (CAdd (CRef 1) (CRef 0)) (list (CNumV 8))))
 
+;; test unbound identifier exception
+(test (run "{call {call {fun {x} y} 6} 8}")
+      =error> "var-binding: unbound identifier: y")
+;; test error with form
+(test (run "{with {x 6} with {y 7} {+ x y}}") =error>
+      "parse-sexpr: bad `with' syntax in (with (x 6) with (y 7) (+ x y))")
+;; test error fun form
+(test (run "{fun {x} {y} {+ x y}}") =error>
+      "parse-sexpr: bad `fun' syntax in (fun (x) (y) (+ x y))")
+;; test bad syntax by using a call with more arguments
+(test (run "{call {fun {x} x} 1 2 3}") =error>
+      "parse-sexpr: bad syntax in (call (fun (x) x) 1 2 3)")
+;; test runtime type error
+(test (run "{+ {fun {x} x} 2}") =error>
+      "arith-op: expected a number, got: (CFunV (CRef 0) ())")
+(test (run "{call 1 2}") =error>
+      "eval: `call' expects a function, got: (CNumV 1)")
