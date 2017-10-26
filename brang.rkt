@@ -44,7 +44,7 @@ Evaluation rules:
 ;; parses s-expressions into BRANGs
 (define (parse-sexpr sexpr)
   (match sexpr
-    [(number: n)    (Num n)]
+    [(number: n) (Num n)]
     [(cons 'with more)
      (match sexpr
        [(list 'with (list (symbol: name) named) body)

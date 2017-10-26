@@ -79,7 +79,6 @@
     [(number: n)    (Num n)]
     ['True          (Bool #t)] ; \ check these before the next
     ['False         (Bool #f)] ; / case turns them into identifiers
-    [(symbol: name) (Id name)]
     [(cons 'with more)
      (match sexpr
        [(list 'with (list (symbol: name) named) body)
@@ -100,6 +99,7 @@
     [(list 'call (symbol: fname) argument) (Call fname (parse-expr argument))]
     [(list 'quote (symbol: fname)) (Quote fname)]
     [(list 'vcall fexpr pexpr) (VCall (parse-expr fexpr) (parse-expr pexpr))]
+    [(symbol: name) (Id name)]
     [else (error 'parse-sexpr "bad syntax in ~s" sexpr)]))
 
 (: Not : ALGAE -> ALGAE)
@@ -441,8 +441,15 @@
       {+ 1 {call main
                  {vcall {if {call even? n}
                           {quote do_even}
-                          {quote do_odd}}
-                        n}}}}}}
+                          {quote do_odd}
+                        }
+                        n
+                 }
+            }
+      }
+     }
+  }
+}
 "
            5) => 6)
 
