@@ -276,4 +276,4 @@ language that users actually see.
 ;; tests for Bind and Bind*
 
 (test (run "{bind {{x 1} {y 2}} {+ x y}}") => 3)
-(test (run "{bind* {{x 1} {x {+ x 1}} {x {* x 2}}} x}") => 24)
+(test (run "{bind* {{x 1} {x {+ x 1}} {x {* x 2}}} x}") => 23)
