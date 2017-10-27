@@ -12,7 +12,7 @@ The grammar:
                        {<id> <BRANG>} ... }
                      <BRANG> <BRANG> ... }
             | { bind* { {<id> <BRANG>}
-                       {<id> <BRANG>} ... }
+                        {<id> <BRANG>} ... }
                      <BRANG> <BRANG> ... }
             | <id>
             | { fun { <id> <id> ... } <BRANG> }
@@ -276,4 +276,4 @@ language that users actually see.
 ;; tests for Bind and Bind*
 
 (test (run "{bind {{x 1} {y 2}} {+ x y}}") => 3)
-(test (run "{bind* {{x 1} {x {+ x 1}} {x {* x 2}}} x}") => 23)
+(test (run "{bind* {{x 1} {x {+ x 1}} {x {* x 2}}} x}") => 4)
