@@ -1,4 +1,4 @@
-#lang pl 06
+#lang pl 07
 
 #|
 The grammar:
@@ -8,12 +8,12 @@ The grammar:
             | { * <BRANG> <BRANG> }
             | { / <BRANG> <BRANG> }
             | { with { <id> <BRANG> } <BRANG> }
-            | { bind { { <id> <BRANG> }
-                       { <id> <BRANG> } ... }
-                <BRANG> }
-            | { bind* { { <id> <BRANG> }
-                        { <id> <BRANG> } ... }
-                <BRANG> }
+            | { bind { {<id> <BRANG>}
+                       {<id> <BRANG>} ... }
+                     <BRANG> <BRANG> ... }
+            | { bind* { {<id> <BRANG>}
+                       {<id> <BRANG>} ... }
+                     <BRANG> <BRANG> ... }
             | <id>
             | { fun { <id> <id> ... } <BRANG> }
             | { call <BRANG> <BRANG> <BRANG> ... }
@@ -41,8 +41,8 @@ language that users actually see.
   [Div  BRANG BRANG]
   [Id   Symbol]
   [With Symbol BRANG BRANG]
-  [Bind (Listof Symbol) BRANG]
-  [Bind* (Listof Symbol) BRANG]
+  [Bind (Listof Symbol) (Listof BRANG) BRANG]
+  [Bind* (Listof Symbol) (Listof BRANG) BRANG]
   [Fun  (Listof Symbol) BRANG]
   [Call BRANG (Listof BRANG)])
 
@@ -76,14 +76,14 @@ language that users actually see.
        [else (error 'parse-sexpr "bad `fun' syntax in ~s" sexpr)])]
     [(cons 'bind more)
      (match sexpr
-       [(list 'bind (list (symbol: bindings) ...) body)
-        (Bind bindings body)]
-       [else (error 'parse-sexpr "bad `bind' sybtax in ~s")])]
+       [(list 'bind (list (list (symbol: ids) (sexpr: exprs)) ...) body)
+       (Bind ids (map parse-sexpr exprs) (parse-sexpr body))]
+       [else (error 'parse-sexpr "bad `bind' syntax in ~s" sexpr)])]
     [(cons 'bind* more)
      (match sexpr
-       [(list 'bind* (list (symbol: bindings) ...) body)
-        (Bind* bindings body)]
-       [else (error 'parse-sexpr "bad `bind*' sybtax in ~s")])]
+       [(list 'bind* (list (list (symbol: ids) (sexpr: exprs)) ...) body)
+       (Bind* ids (map parse-sexpr exprs) (parse-sexpr body))]
+       [else (error 'parse-sexpr "bad `bind' syntax in ~s" sexpr)])]
     [(list '+ lhs rhs) (Add (parse-sexpr lhs) (parse-sexpr rhs))]
     [(list '- lhs rhs) (Sub (parse-sexpr lhs) (parse-sexpr rhs))]
     [(list '* lhs rhs) (Mul (parse-sexpr lhs) (parse-sexpr rhs))]
@@ -148,9 +148,9 @@ language that users actually see.
      ;;        (sub named-expr))
      ;; Better alternative:
      (sub (Call (Fun (list bound-id) bound-body) (list named-expr)))]
-    [(Bind bindings body) ()]
-    [(Bind* bindings body) ()]
     [(Id name) (CRef (de-env name))]
+    [(Bind ids args body) (sub (Call (Fun ids body) args))]
+    [(Bind* ids args body) (sub (Call (Fun ids body) args))]
     [(Fun bound-ids bound-body)
      ;; note that bound-ids are never empty
      (if (= 1 (length bound-ids))
@@ -270,3 +270,10 @@ language that users actually see.
       => 15)
 (test (run "{with {add {fun {x y} {- x y}}} {call add 10 4}}")
       => 6)
+
+;; test flaws in our implementation of multiple-argument functions
+
+;; tests for Bind and Bind*
+
+(test (run "{bind {{x 1} {y 2}} {+ x y}}") => 3)
+(test (run "{bind* {{x 1} {x {+ x 1}} {x {* x 2}}} x}") => 24)
