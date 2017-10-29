@@ -169,6 +169,10 @@ language that users actually see.
             (list (Num 1))))
 
 ;; define the dummy value that should raise an error when evaluated
+;; NOTICE: by smart choose a dummy value that is in valid CORE grammer and
+;;         can be passed as argument but  ONLY raise an error when EVALUATED,
+;;         we can make a unary function be called by no argument
+;;         raise an error at runtime
 (: dummy-value : CORE)
 (define dummy-value (CFun (CAdd (CFun (CNum 0)) (CFun (CNum 1)))))
 
@@ -213,6 +217,12 @@ language that users actually see.
     [(NumV n) n]
     [else (error 'arith-op "expected a number, got: ~s" val)]))
 
+(: pre-check-div : Number Number -> Number)
+(define (pre-check-div num1 num2)
+  (if (= 0 num2)
+      (error 'arith-op "should not divide by zero")
+      (/ num1 num2)))
+
 (: arith-op : (Number Number -> Number) VAL VAL -> VAL)
 ;; gets a Racket numeric binary operator, and uses it within a NumV
 ;; wrapper
@@ -227,7 +237,8 @@ language that users actually see.
     [(CAdd l r) (arith-op + (eval l env) (eval r env))]
     [(CSub l r) (arith-op - (eval l env) (eval r env))]
     [(CMul l r) (arith-op * (eval l env) (eval r env))]
-    [(CDiv l r) (arith-op / (eval l env) (eval r env))]
+    ;; avoid build in devide by zero error
+    [(CDiv l r) (arith-op pre-check-div (eval l env) (eval r env))]
     [(CRef n) (list-ref env n)]
     [(CFun bound-body) (FunV bound-body env)]
     [(CCall fun-expr arg-expr)
@@ -281,6 +292,7 @@ language that users actually see.
       => 2)
 
 ;; test errors
+(test (run "{/ 4 0}") =error> "arith-op: should not divide by zero")
 (test (run "{call {fun {x} {? x 1}} 4}")
       =error> "bad syntax in")
 (test (run "{call {fun {x} {+ y 1}} 4}")
@@ -319,7 +331,30 @@ language that users actually see.
 ;; test no argument call
 (test (run "{call {fun {} {+ 2 1}}}") => 3)
 
-;; test flaws in our implementation of multiple-argument functions
+;; test difference between our implementation and multiple-argument functions
+;; first, calling with less argument will not raise an error for wrong argument
+(test (run "{call {fun {x y} {+ x y}} 1}")
+      =error>
+      ;; this is for invalid output type not for wrong argument
+      (string-append "run: evaluation returned a non-number: "
+                     "(FunV (CAdd (CRef 1) (CRef 0)) ((NumV 1)))"))
+;; second, we can use two form of call, with multi-argument we can only use
+;; the first form not the second
+(test (run "{call {fun {x y} {+ x y}} 3 4}") => 7)
+;; this is invalid in not curried multiple-argument implementations 
+(test (run "{call {call {fun {x y} {+ x y}} 3} 4}") => 7)
+
+;; test for naive dummy value
+;; first: call unary function with no value will not raise an error
+(test (run "{call {fun {x} {fun {} x}}}") =error>
+      ;; this error just for returning not number value
+      (string-append "run: evaluation returned a non-number: "
+                     "(FunV (CRef 1) ((FunV (CAdd (CFun (CNum 0)) "
+                     "(CFun (CNum 1))) ())))"))
+;; second: using dummy will shadow user's define
+;; in this case the inner call with no argument will use dummy that
+;; shadow user defined dummy, in this case is 8
+(test (run "{call {fun {dummy} {call {fun {} {+ dummy 1}}}} 8}"))
 
 ;; tests for Bind and Bind*
 
