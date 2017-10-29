@@ -328,9 +328,10 @@ language that users actually see.
 (test (run "{with {add {fun {x y} {- x y}}} {call add 10 4}}")
       => 6)
 
-;; test no argument call
-(test (run "{call {fun {} {+ 2 1}}}") => 3)
+;; test for function extension
 
+(test (run "{call {fun {} {+ 2 1} } 12 }") => 3) 
+(test (run "{call {fun {dummy} {+ dummy dummy}} 4}") => 8)
 ;; test difference between our implementation and multiple-argument functions
 ;; first, calling with less argument will not raise an error for wrong argument
 (test (run "{call {fun {x y} {+ x y}} 1}")
