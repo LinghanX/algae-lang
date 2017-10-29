@@ -133,6 +133,41 @@ language that users actually see.
              '(a b)))
       => '(0 1))
 
+(: transform-bind : (Listof Symbol) (Listof BRANG) BRANG -> BRANG)
+;; for processing {bind* {{id arg}...} body}
+;; passing (Bind* ids args body) into (transform-bind ids args body de-env)
+;; transform the bind* and bind(a special form of bind*) into combinition of
+;; call and fun
+;; ids: the list of binding var name
+;; args: the corresponding binding value, match element in ids with same index
+;; body: the binding body
+;; functionality:
+;; transform from: {bind* {x 1} {x {+ x 1} {x {* x 2}} x}}
+;; -> {call {fun {x} {bind* {x {+ x 1} {x {* x 2}} x}}} 1}
+;; -> {call {fun {x} {call {fun {x} {bind* {x {* x 2}} x}} {+ x 1}}}} 1}
+;; -> {call {fun {x} {call {fun {x}{call {fun {x} x} {* x 2}}} {+ x 1}}} 1}
+(define (transform-bind ids args body)
+  (match (list ids args)
+    [(list (cons f-ids r-ids) (cons f-args r-args))
+     (Call (Fun (list f-ids)
+                (transform-bind r-ids r-args body))
+           (list f-args))]
+    [(list null null) body]))
+
+;; test show how transform-bind works
+;; code: {bind* {{x 1} {x {+ x 1}} {x {* x 2}}} x}
+(test (transform-bind '(x x x)
+                      (list (Num 1)
+                            (Add (Id 'x) (Num 1))
+                            (Mul (Id 'x) (Num 2)))
+                      (Id 'x))
+      =>
+      (Call (Fun '(x) (Call
+                       (Fun '(x) (Call (Fun '(x) (Id 'x))
+                                       (list (Mul (Id 'x) (Num 2)))))
+                       (list (Add (Id 'x) (Num 1)))))
+            (list (Num 1))))
+
 (: preprocess : BRANG DE-ENV -> CORE)
 ;; replaces identifier expressions into Ref AST values
 (define (preprocess expr de-env)
@@ -150,8 +185,8 @@ language that users actually see.
      ;; Better alternative:
      (sub (Call (Fun (list bound-id) bound-body) (list named-expr)))]
     [(Id name) (CRef (de-env name))]
-    [(Bind ids args body) (sub (Call (Fun ids body) args))]
-    [(Bind* ids args body) (sub (Call (Fun ids body) args))]
+    [(Bind ids args body) (sub (transform-bind ids args body))]
+    [(Bind* ids args body) (sub (transform-bind ids args body))]
     [(Fun bound-ids bound-body)
      ;; note that bound-ids are never empty
      (if (= 1 (length bound-ids))
@@ -251,8 +286,8 @@ language that users actually see.
       =error> "bad `fun' syntax")
 (test (run "{call {fun {x} } 4}")
       =error> "bad `fun' syntax")
-(test (run "{fun {} 1}")
-      =error> "`fun' with no arguments")
+#|(test (run "{fun {} 1}")
+      =error> "`fun' with no arguments")|#
 (test (run "{with {y} }")
       =error> "bad `with' syntax")
 (test (run "{fun {x} {+ x x}}")
@@ -276,5 +311,9 @@ language that users actually see.
 
 ;; tests for Bind and Bind*
 
+(test
+ (run "{call {fun {x} {call {fun {x}{call {fun {x} x} {* x 2}}} {+ x 1}}} 1}")
+ => 4)
+
 (test (run "{bind {{x 1} {y 2}} {+ x y}}") => 3)
-;(test (run "{bind* {{x 1} {x {+ x 1}} {x {* x 2}}} x}") => 4)
+(test (run "{bind* {{x 1} {x {+ x 1}} {x {* x 2}}} x}") => 4)
