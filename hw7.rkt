@@ -83,16 +83,16 @@ language that users actually see.
      (match sexpr
        [(list 'bind* (list (list (symbol: ids) (sexpr: exprs)) ...) body)
        (Bind* ids (map parse-sexpr exprs) (parse-sexpr body))]
-       [else (error 'parse-sexpr "bad `bind' syntax in ~s" sexpr)])]
+       [else (error 'parse-sexpr "bad `bind*' syntax in ~s" sexpr)])]
     [(list '+ lhs rhs) (Add (parse-sexpr lhs) (parse-sexpr rhs))]
     [(list '- lhs rhs) (Sub (parse-sexpr lhs) (parse-sexpr rhs))]
     [(list '* lhs rhs) (Mul (parse-sexpr lhs) (parse-sexpr rhs))]
     [(list '/ lhs rhs) (Div (parse-sexpr lhs) (parse-sexpr rhs))]
     [(cons 'call more)
      (match sexpr
-       [(list 'call fun arg args ...)
-        (Call (parse-sexpr fun) (map parse-sexpr (cons arg args)))]
-       [else (error 'parse-sexpr "missing arguments to `call' in ~s"
+       [(list 'call fun args ...)
+        (Call (parse-sexpr fun) (map parse-sexpr args))]
+       [else (error 'parse-sexpr "call should not be empty to `call' in ~s"
                     sexpr)])]
     [else (error 'parse-sexpr "bad syntax in ~s" sexpr)]))
 
@@ -168,6 +168,10 @@ language that users actually see.
                        (list (Add (Id 'x) (Num 1)))))
             (list (Num 1))))
 
+;; define the dummy value that should raise an error when evaluated
+(: dummy-value : CORE)
+(define dummy-value (CFun (CAdd (CFun (CNum 0)) (CFun (CNum 1)))))
+
 (: preprocess : BRANG DE-ENV -> CORE)
 ;; replaces identifier expressions into Ref AST values
 (define (preprocess expr de-env)
@@ -196,12 +200,11 @@ language that users actually see.
        (sub (Fun (list (first bound-ids))
                  (Fun (rest bound-ids) bound-body))))]
     [(Call fun-expr arg-exprs)
-     ;; note that arg-exprs are never empty
-     (if (= 1 (length arg-exprs))
-       (CCall (sub fun-expr) (sub (first arg-exprs)))
+     (match arg-exprs
+       ['() (CCall (sub fun-expr) dummy-value)]
+       [(list single) (CCall (sub fun-expr) (sub single))]
        ;; and a similar choice here too
-       (sub (Call (Call fun-expr (list (first arg-exprs)))
-                  (rest arg-exprs))))]))
+       [(cons fst rst) (sub (Call (Call fun-expr (list fst)) rst))])]))
 
 (: NumV->number : VAL -> Number)
 ;; convert a FLANG runtime numeric value to a Racket one
@@ -286,8 +289,6 @@ language that users actually see.
       =error> "bad `fun' syntax")
 (test (run "{call {fun {x} } 4}")
       =error> "bad `fun' syntax")
-#|(test (run "{fun {} 1}")
-      =error> "`fun' with no arguments")|#
 (test (run "{with {y} }")
       =error> "bad `with' syntax")
 (test (run "{fun {x} {+ x x}}")
@@ -299,13 +300,24 @@ language that users actually see.
 (test (run "{call 1 1}")
       =error> "expects a function")
 (test (run "{call {fun {x} x}}")
-      =error> "missing arguments to `call'")
+      =error>
+      (string-append "run: evaluation returned a non-number: "
+                     "(FunV (CAdd (CFun (CNum 0)) (CFun (CNum 1))) ())"))
+(test (run "{bind {{+ x 1} 4} 6}")
+      =error> "parse-sexpr: bad `bind' syntax in (bind ((+ x 1) 4) 6)")
+(test (run "{bind* {x 4 5} 6}")
+      =error> "parse-sexpr: bad `bind*' syntax in (bind* (x 4 5) 6)")
+(test (run "{call}")
+      =error> "parse-sexpr: call should not be empty to `call' in (call)")
 
 ;; test multiple-argument functions
 (test (run "{with {add {fun {x y} {+ x y}}} {call add 7 8}}")
       => 15)
 (test (run "{with {add {fun {x y} {- x y}}} {call add 10 4}}")
       => 6)
+
+;; test no argument call
+(test (run "{call {fun {} {+ 2 1}}}") => 3)
 
 ;; test flaws in our implementation of multiple-argument functions
 
@@ -317,3 +329,6 @@ language that users actually see.
 
 (test (run "{bind {{x 1} {y 2}} {+ x y}}") => 3)
 (test (run "{bind* {{x 1} {x {+ x 1}} {x {* x 2}}} x}") => 4)
+
+;; time spent
+(define minutes-spent 257)
