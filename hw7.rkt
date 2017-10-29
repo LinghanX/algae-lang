@@ -316,10 +316,10 @@ language that users actually see.
 (test (run "{with {add {fun {x y} {- x y}}} {call add 10 4}}")
       => 6)
 
-;; test no argument call
-(test (run "{call {fun {} {+ 2 1}}}") => 3)
+;; test for function extension
 
-;; test flaws in our implementation of multiple-argument functions
+(test (run "{call {fun {} {+ 2 1} } 12 }") => 3) 
+(test (run "{call {fun {dummy} {+ dummy dummy}} 4}") => 8)
 
 ;; tests for Bind and Bind*
 
