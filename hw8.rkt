@@ -11,22 +11,29 @@ The grammar:
             | { / <BRANG> <BRANG> }
             | { with { <id> <BRANG> } <BRANG> }
             | <id>
-            | { fun { <id> <id> ... } <BRANG> }
             | { call <BRANG> <BRANG> <BRANG> ... }
+            | <FUN-EXPR>
+            | { rec { <id> <FUN-EXPR> } <BRANG> }
+  <FUN-EXPR> ::= { fun { <id> <id> ... } <BRANG> }
 
-Evaluation rules:
-  eval(N,env)                = N
-  eval({+ E1 E2},env)        = eval(E1,env) + eval(E2,env)
-  eval({- E1 E2},env)        = eval(E1,env) - eval(E2,env)
-  eval({* E1 E2},env)        = eval(E1,env) * eval(E2,env)
-  eval({/ E1 E2},env)        = eval(E1,env) / eval(E2,env)
-  eval(x,env)                = lookup(x,env)
-  eval({with {x E1} E2},env) = eval(E2,extend(x,eval(E1,env),env))
-  eval({fun {x} E},env)      = <{fun {x} E}, env>
-  eval({call E1 E2},env1)
-           = eval(Ef,extend(x,eval(E2,env1),env2))
-                             if eval(E1,env1) = <{fun {x} Ef}, env2>
-           = error!          otherwise
+Transform rules (from BRANG to CORE syntax):
+  trans(N,de-env)                = N
+  trans({+ E1 E2},de-env)        = trans(E1,de-env) + trans(E2,de-env)
+  trans({- E1 E2},de-env)        = trans(E1,de-env) - trans(E2,de-env)
+  trans({* E1 E2},de-env)        = trans(E1,de-env) * trans(E2,de-env)
+  trans({/ E1 E2},de-env)        = trans(E1,de-env) / trans(E2,de-env)
+  trans(x,de-env)                = map-to-index(x,de-env)
+  trans({with {x E1} E2},de-env)
+        = trans({call {fun {x} E2} E1})
+  trans({fun {x} E}, de-env)     = cfun {trans(E, extend(x, de-env))}
+  trans({fun {x1 x2 x3 ...} E},de-env)
+        = trans({fun {x1} {fun {x2} {fun {x3} ... E  } ... }}
+  trans({call FE E},de-env) = {ccall trans(FE, de-env) trans(E, de-env)}
+  trans({call FE E1 E2 E3 ...},de-env)
+        = trans({call ... {call {call {call {FE} E1} E2} E3} ... }, de-env)
+  trans({rec {t fun {x1 x2 x3 ...} F} E}, de-env)
+        = trans({with {t {call Y {fun {t x1 x2 x3 ...} F}}} E}, de-env)
+        where Y = {}
 |#
 
 (define-type BRANG
@@ -211,6 +218,17 @@ Evaluation rules:
       (brang->core fexpr de-env)
       (CCall (build-ccall fexpr (rest arg-exprs) de-env)
              (brang->core (first arg-exprs) de-env))))
+
+;; defined the cached Y combinator
+(: Y-comb : CORE)
+(define Y-comb (preprocess (parse "
+{fun {f} 
+  {call 
+    {fun {x} {call f {fun {n} {call x x n}}}}
+    {fun {x} {call f {fun {n} {call x x n}}}}
+  }
+}
+") de-empty-env))
 
 ;; defines the run, actually the run can return an closure of function
 (: run : String -> (U Number CVAL))
