@@ -45,7 +45,10 @@ Transform rules (from BRANG to CORE syntax):
   [Id   Symbol]
   [With Symbol BRANG BRANG]
   [Fun  (Listof Symbol) BRANG]
-  [Call BRANG (Listof BRANG)])
+  [Call BRANG (Listof BRANG)]
+  ;; {rec {id {fun {lst...} f-body} body} will transform to
+  ;; (WRec id lst f-body body)
+  [WRec Symbol (Listof Symbol) BRANG BRANG])
 
 (: parse-sexpr : Sexpr -> BRANG)
 ;; parses s-expressions into BRANGs
@@ -62,6 +65,13 @@ Transform rules (from BRANG to CORE syntax):
        [(list 'fun (list (symbol: first-name) (symbol: rest-names) ...) body)
         (Fun (cons first-name rest-names) (parse-sexpr body))]
        [else (error 'parse-sexpr "bad `fun' syntax in ~s" sexpr)])]
+    [(cons 'rec more)
+     (match sexpr
+       [(list 'rec (list (symbol: id) fun-expr) body)
+        (cases (parse-sexpr fun-expr)
+          [(Fun params f-body) (WRec id params f-body (parse-sexpr body))]
+          [else (error 'parse-sexpr "non-fun form in `rec': ~s" sexpr)])]
+       [else (error 'parse-sexpr "bad `rec' syntax in ~s" sexpr)])]
     [(list '+ lhs rhs) (Add (parse-sexpr lhs) (parse-sexpr rhs))]
     [(list '- lhs rhs) (Sub (parse-sexpr lhs) (parse-sexpr rhs))]
     [(list '* lhs rhs) (Mul (parse-sexpr lhs) (parse-sexpr rhs))]
@@ -192,7 +202,11 @@ Evaluation rules:
      ;; delegate the with statement into a call of lambda expression
      (recur (Call (Fun (list name) body) (list def)))]
     [(Fun param body) (build-cfun param body de-env)]
-    [(Call fexpr argument) (build-ccall fexpr (reverse argument) de-env)]))
+    [(Call fexpr argument) (build-ccall fexpr (reverse argument) de-env)]
+    [(WRec id param f-body body)
+     (recur (With id
+                  (Call Y-comb (list (Fun (cons id param) f-body)))
+                  body))]))
 
 ;; the preprocessor transform brang ast to core ast using helper defined above
 (: preprocess : BRANG DE-ENV -> CORE)
@@ -220,15 +234,14 @@ Evaluation rules:
              (brang->core (first arg-exprs) de-env))))
 
 ;; defined the cached Y combinator
-(: Y-comb : CORE)
-(define Y-comb (preprocess (parse "
+(: Y-comb : BRANG)
+(define Y-comb (parse "
 {fun {f} 
   {call 
     {fun {x} {call f {fun {n} {call x x n}}}}
     {fun {x} {call f {fun {n} {call x x n}}}}
   }
-}
-") de-empty-env))
+}"))
 
 ;; defines the run, actually the run can return an closure of function
 (: run : String -> (U Number CVAL))
