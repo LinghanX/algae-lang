@@ -12,6 +12,7 @@ The grammar:
             | { with { <id> <BRANG> } <BRANG> }
             | <id>
             | { call <BRANG> <BRANG> <BRANG> ... }
+            | { if0 <BRANG> <BRANG> <BRANG> }
             | <FUN-EXPR>
             | { rec { <id> <FUN-EXPR> } <BRANG> }
   <FUN-EXPR> ::= { fun { <id> <id> ... } <BRANG> }
@@ -33,7 +34,9 @@ Transform rules (from BRANG to CORE syntax):
         = trans({call ... {call {call {call {FE} E1} E2} E3} ... }, de-env)
   trans({rec {t fun {x1 x2 x3 ...} F} E}, de-env)
         = trans({with {t {call Y {fun {t x1 x2 x3 ...} F}}} E}, de-env)
-        where Y = {}
+        where Y is Y combinator
+  trans({if0 C TE FE}, de-env) =
+        {cif0 trans(C, de-env) trans(TE, de-env) trans(FE, de-env)}
 |#
 
 (define-type BRANG
@@ -48,7 +51,8 @@ Transform rules (from BRANG to CORE syntax):
   [Call BRANG (Listof BRANG)]
   ;; {rec {id {fun {lst...} f-body} body} will transform to
   ;; (WRec id lst f-body body)
-  [WRec Symbol (Listof Symbol) BRANG BRANG])
+  [WRec Symbol (Listof Symbol) BRANG BRANG]
+  [If0 BRANG BRANG BRANG])
 
 (: parse-sexpr : Sexpr -> BRANG)
 ;; parses s-expressions into BRANGs
@@ -72,6 +76,13 @@ Transform rules (from BRANG to CORE syntax):
           [(Fun params f-body) (WRec id params f-body (parse-sexpr body))]
           [else (error 'parse-sexpr "non-fun form in `rec': ~s" sexpr)])]
        [else (error 'parse-sexpr "bad `rec' syntax in ~s" sexpr)])]
+    [(cons 'if0 more)
+     (match sexpr
+       [(list 'if0 cond-expr true-expr false-expr)
+        (If0 (parse-sexpr cond-expr)
+             (parse-sexpr true-expr)
+             (parse-sexpr false-expr))]
+       [else (error 'parse-sexpr "bad `if' syntax in ~s" sexpr)])]
     [(list '+ lhs rhs) (Add (parse-sexpr lhs) (parse-sexpr rhs))]
     [(list '- lhs rhs) (Sub (parse-sexpr lhs) (parse-sexpr rhs))]
     [(list '* lhs rhs) (Mul (parse-sexpr lhs) (parse-sexpr rhs))]
@@ -100,6 +111,7 @@ The grammar:
             | <id>
             | { fun { <id> } <CORE> }
             | { call <CORE> <CORE> }
+            | { cif0 <CORE> <CORE> <CORE> }
 
 Evaluation rules:
   eval(N,env)                = N
@@ -114,6 +126,11 @@ Evaluation rules:
            = eval(Ef,extend(x,eval(E2,env1),env2))
                              if eval(E1,env1) = <{fun {x} Ef}, env2>
            = error!          otherwise
+  eval({cif0 CE TE FE}, env)
+           = eval(TE, env)   if eval(CE, env) == 0
+           = eval(FE, env)   if eval(CE, env) is not zero or not number type
+       the evaluation of TE and FE is lazy evaluated, only eval after CE is
+       evaluated, when CE is eval 0, FE is not evaluated, vise versa for TE
 |#
 
 (define-type CORE
@@ -127,7 +144,8 @@ Evaluation rules:
   ;; only contain function body, the name is not needed
   [CFun  CORE]
   ;; first is the function value, second is the parameter to function
-  [CCall CORE CORE])
+  [CCall CORE CORE]
+  [CIf0  CORE CORE CORE])
 
 ;; Types for environments, values, and a lookup function for core
 
@@ -184,7 +202,12 @@ Evaluation rules:
           (eval bound-body
                 (cons Argument f-env))]
          [else (error 'eval "`call' expects a function, got: ~s"
-                            Cfval)]))]))
+                            Cfval)]))]
+    [(CIf0 cond true-expr false-expr)
+     (define cond-value (eval cond env))
+     (if (equal? (CNumV 0) cond-value)
+         (eval true-expr env)
+         (eval false-expr env))]))
 
 (: brang->core : BRANG DE-ENV -> CORE)
 (define (brang->core brang de-env)
@@ -206,7 +229,9 @@ Evaluation rules:
     [(WRec id param f-body body)
      (recur (With id
                   (Call Y-comb (list (Fun (cons id param) f-body)))
-                  body))]))
+                  body))]
+    [(If0 cond true-expr false-expr)
+     (CIf0 (recur cond) (recur true-expr) (recur false-expr))]))
 
 ;; the preprocessor transform brang ast to core ast using helper defined above
 (: preprocess : BRANG DE-ENV -> CORE)
@@ -323,3 +348,35 @@ Evaluation rules:
 
 (test (run "{call {fun {x y z h} {+ {* x y} {/ z h}}} 3 4 18 6}")
       => (+ (* 3 4) (/ 18 6)))
+
+;; test for recur and if0 syntax
+(test (run "
+{rec
+  {fact
+    {fun {x} {if0 x
+                  1
+                  {* x {call fact {- x 1}}}
+             }
+    }
+  }
+  {call fact 8}}") => 40320)
+(test (run "{if0 {- 4 4} 8 9}") => 8)
+(test (run "{rec {w {fun {x} {call w x}}} {if0 w 4 5}}") => 5)
+
+;; test for the laziness of if
+(test (run "{call {if0 {+ 1 1}
+                       {rec {w {fun {x} {call w x}}} {call w 4}}
+                       {fun {a b} {- a b}}}
+            5 6}") => -1)
+
+;; test error of if0 and rec
+;; test bad syntax of if0 statement
+(test (run "{if0 1 2 3 4}") =error>
+      "parse-sexpr: bad `if' syntax in (if0 1 2 3 4)")
+(test (run "{if0 1 2}") =error> "parse-sexpr: bad `if' syntax in (if0 1 2)")
+;; error in form of rec
+(test (run "{rec {f {+ 1 2} {+ 3 4}} {call f f}}") =error>
+      "parse-sexpr: bad `rec' syntax in (rec (f (+ 1 2) (+ 3 4)) (call f f))")
+;; error in non-function syntax in rec
+(test (run "{rec {f {+ 1 2}} {+ f 4}}") =error>
+      "parse-sexpr: non-fun form in `rec': (rec (f (+ 1 2)) (+ f 4))")
