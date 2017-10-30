@@ -50,8 +50,8 @@ Transform rules (from BRANG to CORE syntax):
   [Fun  (Listof Symbol) BRANG]
   [Call BRANG (Listof BRANG)]
   ;; {rec {id {fun {lst...} f-body} body} will transform to
-  ;; (WRec id lst f-body body)
-  [WRec Symbol (Listof Symbol) BRANG BRANG]
+  ;; (WRec id f-body body)
+  [WRec Symbol BRANG BRANG]
   [If0 BRANG BRANG BRANG])
 
 (: parse-sexpr : Sexpr -> BRANG)
@@ -72,9 +72,7 @@ Transform rules (from BRANG to CORE syntax):
     [(cons 'rec more)
      (match sexpr
        [(list 'rec (list (symbol: id) fun-expr) body)
-        (cases (parse-sexpr fun-expr)
-          [(Fun params f-body) (WRec id params f-body (parse-sexpr body))]
-          [else (error 'parse-sexpr "non-fun form in `rec': ~s" sexpr)])]
+        (WRec id (parse-sexpr fun-expr) (parse-sexpr body))]
        [else (error 'parse-sexpr "bad `rec' syntax in ~s" sexpr)])]
     [(cons 'if0 more)
      (match sexpr
@@ -226,10 +224,13 @@ Evaluation rules:
      (recur (Call (Fun (list name) body) (list def)))]
     [(Fun param body) (build-cfun param body de-env)]
     [(Call fexpr argument) (build-ccall fexpr (reverse argument) de-env)]
-    [(WRec id param f-body body)
-     (recur (With id
-                  (Call Y-comb (list (Fun (cons id param) f-body)))
-                  body))]
+    [(WRec id f-expr body)
+     (cases f-expr
+       [(Fun param f-body)
+        (recur (With id
+                     (Call Y-comb (list (Fun (cons id param) f-body)))
+                     body))]
+       [else (error 'WRec "non-fun form in `rec'")])]
     [(If0 cond true-expr false-expr)
      (CIf0 (recur cond) (recur true-expr) (recur false-expr))]))
 
@@ -379,7 +380,7 @@ Evaluation rules:
       "parse-sexpr: bad `rec' syntax in (rec (f (+ 1 2) (+ 3 4)) (call f f))")
 ;; error in non-function syntax in rec
 (test (run "{rec {f {+ 1 2}} {+ f 4}}") =error>
-      "parse-sexpr: non-fun form in `rec': (rec (f (+ 1 2)) (+ f 4))")
+      "WRec: non-fun form in `rec'")
 ;; tests for not capturing 'Y
 (test (run "{rec {Y {fun {n}
                       {if0 n 1 {* n {call Y {- n 1}}}}}}
@@ -389,3 +390,5 @@ Evaluation rules:
                          {if0 Y 1 {* Y {call fact {- Y 1}}}}}}
               {call fact 5}}")
       => 120)
+
+(define minutes-spent 210)
