@@ -202,7 +202,7 @@ Evaluation rules:
           (eval bound-body
                 (cons Argument f-env))]
          [else (error 'eval "`call' expects a function, got: ~s"
-                            Cfval)]))]
+                      Cfval)]))]
     [(CIf0 cond true-expr false-expr)
      (define cond-value (eval cond env))
      (if (equal? (CNumV 0) cond-value)
@@ -380,3 +380,12 @@ Evaluation rules:
 ;; error in non-function syntax in rec
 (test (run "{rec {f {+ 1 2}} {+ f 4}}") =error>
       "parse-sexpr: non-fun form in `rec': (rec (f (+ 1 2)) (+ f 4))")
+;; tests for not capturing 'Y
+(test (run "{rec {Y {fun {n}
+                      {if0 n 1 {* n {call Y {- n 1}}}}}}
+              {call Y 5}}")
+      => 120)
+(test (run "{rec {fact {fun {Y}
+                         {if0 Y 1 {* Y {call fact {- Y 1}}}}}}
+              {call fact 5}}")
+      => 120)
