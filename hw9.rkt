@@ -30,8 +30,7 @@
                             (lambda (_)
                               (lambda (x ...)
                                 (let ([f (f #f)])
-                                  (lambda (x ...)
-                                    body))))))])
+                                  body)))))])
                 (g #f))))
 
 (define/rec (ackermann m n)
