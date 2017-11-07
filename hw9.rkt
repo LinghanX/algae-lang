@@ -41,14 +41,16 @@
               (let ([f (g 'f)] ...)
                 B)))
 
-(letfuns ([(even? n) (if (= n 0) #t (odd?  (- n 1)))]
-          [(odd?  n) (if (= n 0) #f (even? (- n 1)))])
-         (even? 123))
+
 
 ;; test define/rec
 (test (ackermann 3 3) => 61)
 (test (fib 5) => 5)
 
+;; test letfuns
+(test (letfuns ([(even? n) (if (= n 0) #t (odd?  (- n 1)))]
+                [(odd?  n) (if (= n 0) #f (even? (- n 1)))])
+               (or (even? 123) (odd? 120) (even? 120))))
 ;; an extended example
 (define scan
   (letfuns ([(start str)  (loop (explode-string str) 0)]
@@ -67,9 +69,8 @@
                             [(cons (number: m1) more)
                              (and (< m m1) (nums more m1 n))]
                             [else (loop l n)])])
-    start))
+           start))
 (test (scan "(()123(246x12)) (blah)"))
 (test (not (scan "(1232)")))
 (test (not (scan "()(")))
 (test (not (scan "())")))
-
