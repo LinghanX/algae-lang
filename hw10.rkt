@@ -16,7 +16,7 @@
 |#
 
 ;; a convenient rewrite for local bindings
-(rewrite (with [x E1] E2) => ???)
+(rewrite (with [x E1] E2) => ((lambda (x) E2) E1))
 ;; tests
 (test (->nat (with [x (* 2 4)] (+ x x))) => '16)
 (test (->nat (with [x 3] (with [x (* x 3)] (+ x x)))) => '18)
@@ -28,7 +28,9 @@
 (define diff
   (lambda (x y)
     ;; reminder: x-y=0 if y>x
-    ???))
+    (if (zero? (- x y))
+        (- y x)
+        (- x y))))
 ;; tests
 (test (->nat (diff 0 0)) => '0)
 (test (->nat (diff 3 3)) => '0)
@@ -37,7 +39,7 @@
 
 ;; = : Nat Nat -> Bool
 ;; comparison for natural numbers
-???
+(define = (lambda (x y) (and (zero? (- x y)) (zero? (- y x)))))
 ;; tests
 (test (->bool (= 0 0)) => '#t)
 (test (->bool (= 1 1)) => '#t)
@@ -55,7 +57,7 @@
 ;; racket)
 (define/rec ref
   (lambda (n list)
-    ???))
+    (if (zero? n) (car list) (ref (- n 1) (cdr list)))))
 ;; tests
 (test (->nat (ref 0 l123)) => '1)
 (test (->nat (ref 1 l123)) => '2)
@@ -64,7 +66,10 @@
 ;; map : (A -> B) (Listof A) -> (Listof B)
 ;; maps the given function on the list, return a list of the results
 (define/rec map
-  ???)
+  (lambda (f list)
+    (if (null? list)
+        null
+        (cons (f (car list)) (map f (cdr list))))))
 ;; tests
 (test (->listof ->nat (map add1 null)) => '())
 (test (->listof ->nat (map add1 l123)) => '(2 3 4))
@@ -73,7 +78,9 @@
 ;; appends the two input lists
 (define/rec append
   (lambda (l1 l2)
-    ???))
+    (if (null? l1)
+        l2
+        (append (cdr l1) (cons (car l1) l2)))))
 ;; tests
 (test (->listof ->nat (append null null)) => '())
 (test (->listof ->nat (append null l123)) => '(1 2 3))
@@ -84,7 +91,7 @@
 ;; consumes a list of lists, and appends them all to a single list
 (define/rec append*
   (lambda (lists)
-    ???))
+    ))
 ;; tests
 (test (->listof ->nat (append* null)) => '())
 (test (->listof ->nat (append* (cons null null))) => '())
