@@ -42,8 +42,6 @@
               (let ([f (g 'f)] ...)
                 B)))
 
-
-
 ;; test define/rec
 (test (ackermann 3 3) => 61)
 (test (fib 5) => 5)
