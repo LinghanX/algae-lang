@@ -1,5 +1,6 @@
 #lang pl 09
 
+; Y combinator: for any function f, returns a fixed point x of that function
 (define (Y f)
   ((lambda (x) (x x))
    (lambda (x) (f (lambda (z) ((x x) z))))))
