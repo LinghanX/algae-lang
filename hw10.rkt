@@ -91,7 +91,10 @@
 ;; consumes a list of lists, and appends them all to a single list
 (define/rec append*
   (lambda (lists)
-    ))
+    (if (= 1 (length lists))
+        (car lists)
+        (append* (cons (append (car lists) (car (cdr lists)))
+                       (cdr (cdr lists)))))))
 ;; tests
 (test (->listof ->nat (append* null)) => '())
 (test (->listof ->nat (append* (cons null null))) => '())
