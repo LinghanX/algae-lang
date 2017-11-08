@@ -113,9 +113,22 @@
 ;; item is inserted at all possible places in the original list.
 (define/rec interleave
   (lambda (x list)
-    (if (null? list)
-      (cons (cons x null) null)
-      ???)))
+    (interleave-helper x null list)))
+
+;; interleave-helper: A (Listof A) (Listof A) -> (Listof (Listof A))
+;; insert an item and two lists, put the item in between the lists to
+;; form a new list; then incrementally put the first item of second list
+;; given to the tail of the first list, form another list, iterate through
+;; the end of the second list.
+(define/rec interleave-helper
+  (lambda (x left-list right-list)
+    (if (null? right-list)
+        (cons left-list (cons x null))
+        (cons (cons left-list (cons x right-list))
+              (interleave-helper (x
+                                  (cons left-list (cons (car right-list) null))
+                                  (cdr right-list)))))))
+
 ;; tests
 (test (->listof (->listof ->nat) (interleave 0 null)) => '((0)))
 (test (->listof (->listof ->nat) (interleave 0 l123))
@@ -126,10 +139,10 @@
 (define/rec permutations
   (lambda (list)
     (if (null? list)
-      (cons null null)
-      ;; use `append*', `interleave', and a recursive call to
-      ;; `permutations'
-      ???)))
+        (cons null null)
+        ;; use `append*', `interleave', and a recursive call to
+        ;; `permutations'
+        ???)))
 ;; tests
 (test (->listof (->listof ->nat) (permutations null))
       => '(()))
@@ -215,8 +228,8 @@
 (define von-koch
   (lambda (edges)
     (with [n (add1 (length edges))]
-      (with [assignments (permutations (range n))]
-        ???))))
+          (with [assignments (permutations (range n))]
+                ???))))
 
 ;; ==================== Main test ====================
 
@@ -234,13 +247,13 @@
 (define/rec pair-list*
   (lambda (k x)
     (if (null? x)
-      (k null)
-      (pair-list* (lambda (r) (k (cons x r)))))))
+        (k null)
+        (pair-list* (lambda (r) (k (cons x r)))))))
 (define pair-list (pair-list* identity))
 ;; test the testing utility...
 (test (->listof ->nat
-       (with [xs (pair-list (cons 1 2) (cons 3 4) (cons 5 6) null)]
-         (append (map car xs) (map cdr xs))))
+                (with [xs (pair-list (cons 1 2) (cons 3 4) (cons 5 6) null)]
+                      (append (map car xs) (map cdr xs))))
       => '(1 3 5 2 4 6))
 
 ;; This is an encoding of the simple graph from the homework:
