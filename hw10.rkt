@@ -142,7 +142,7 @@
         (cons null null)
         ;; use `append*', `interleave', and a recursive call to
         ;; `permutations'
-        ???)))
+        (append* (interleave (car list) (permutations (cdr list)))))))
 ;; tests
 (test (->listof (->listof ->nat) (permutations null))
       => '(()))
@@ -159,7 +159,12 @@
 ;; given a predicate and a list, return a list of the items that
 ;; satisfy the predicate
 (define/rec filter
-  ???)
+  (lambda (f list)
+    (if (null? list)
+        null
+        (if (f (car list))
+            (cons (car list) (filter f (cdr list)))
+            (filter f (cdr list))))))
 ;; tests
 (test (->listof ->nat (filter (lambda (n) #t) l123))
       => '(1 2 3))
@@ -172,7 +177,13 @@
 ;; determines whether the given number is included in the given list
 ;; (note: unlike Racket's `member', this is limited to numbers, and
 ;; returns a boolean)
-???
+(define/rec member?
+  (lambda (n list)
+    (if (null? list)
+        #f
+        (or (= n (car list))
+            (member? n (cdr list))))))
+  
 ;; tests
 (test (->bool (member? 2 l123)) => '#t)
 (test (->bool (member? 4 l123)) => '#f)
@@ -181,8 +192,9 @@
 ;; determines if the given list of numbers is unique
 (define/rec unique?
   (lambda (list)
-    (or ???
-        (and ???))))
+    (or (null? list)
+        (and (not (member? (car list) (cdr list)))
+             (unique? (cdr list))))))
 ;; tests
 (test (->bool (unique? l123)) => '#t)
 (test (->bool (unique? (cons 2 l123))) => '#f)
