@@ -142,10 +142,8 @@
         (cons null null)
         ;; use `append*', `interleave', and a recursive call to
         ;; `permutations'
-        (append* (map
-                  (lambda (l)
-                    (interleave (car list) l))
-                  (permutations (cdr list)))))))
+        (append* (map (lambda (l) (interleave (car list) l))
+                      (permutations (cdr list)))))))
 
 ;; tests
 (test (->listof (->listof ->nat) (permutations null))
@@ -260,16 +258,7 @@
   (lambda (edges)
     (with [n (add1 (length edges))]
           (with [assignments (permutations (range n))]
-                (von-koch-helper edges assignments)))))
-
-(define/rec von-koch-helper
-  (lambda (edges assignments)
-    (if (null? assignments)
-        null
-        (if (graceful? edges (car assignments))
-            (cons (car assignments) (von-koch-helper edges (cdr assignments)))
-            (von-koch-helper edges (cdr assignments))))))
-
+                (filter (lambda (as) (graceful? edges as)) assignments)))))
 ;; ==================== Main test ====================
 
 ;; we'll need a 6
