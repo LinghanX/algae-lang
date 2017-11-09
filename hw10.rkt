@@ -243,7 +243,8 @@
   (lambda (edges assignment)
     (unique? (map (lambda (edge)
                     ;; use `ref' with the car and cdr of the edge
-                    (diff (car edge) (car (cdr edge))))
+                    (diff (ref (car edge) assignment)
+                          (ref (cdr edge) assignment)))
                   edges))))
 
 ;; von-koch : (Listof (Pair Nat Nat)) -> (Listof (Listof Nat))
@@ -319,6 +320,7 @@
 ;; for `permutations', this test is not a good one!)
 (define simple-solution (car (von-koch simple-graph)))
 (test (->listof ->nat simple-solution) => '(3 4 5 2 0 6 1))
+(test (->listof ->nat (car (cdr (von-koch simple-graph)))) => '(4 3 5 2 0 6 1))
 ;; This labeling corresponds to this graph, shown with the differences
 ;;
 ;;    3   6---2
@@ -362,3 +364,6 @@
 (define johns-solution (car (von-koch johns-graph)))
 
 |#
+
+(define hours-spent 5)
+(test (->nat hours-spent) => '5)
