@@ -1,5 +1,14 @@
 #lang pl 11
 
+;; A proper structured tail call optimization could reduce the amount of
+;; frames of the procedure that's called by cutting redundent calls in
+;; the call stack. This is particularly useful in PL 11 since most of the
+;; procedures end with tail calls. As an example, in our fib procedure
+;; case, a tail optimization is essential to avoid stack overflow as otherwise
+;; each iteration calls a new frame of the fib procedure; meanwhile the tail
+;; call optimized procedure can avoid most of the frames. 
+
+
 ;; we represent labels (goto targets) as thunks, and registers (or
 ;; memory locations in general) as integer boxes.
 (define-type Label    = (-> Integer))
@@ -107,12 +116,32 @@
 (define (more-ones? a b)
   (: A : Register) (define A (box a))
   (: B : Register) (define B (box b))
+  ;; C is created as a 'mask' 
+  (: C : Register) (define C (box 1))
+  ;; D is for store the num of 1 bits
+  (: D : Register) (define D (box 0))
+  ;; E is the place where the number is being counted
+  (: E : Register) (define E (box 0))
+  ;; F is the counter
+  (: F : Register) (define F (box 31))
+
+  
   ;; ... more registers ...
   ;;
   (: main : Label)
   ;; ... more labels ...
+  (: sumA     : Label)
+  (: checkBit : Label)
+  (: sumB     : Label)
+  (: comP     : Label)
+  
   ;;
-  (define (main) (goto sumA))
+  (define (main) (goto sumA)
+                 (goto sumB)
+                 (goto comP))
+  (define (sumA) (mov E A)
+                 (and E C)
+                 (ifp 
   ;; ... more thunks ...
   ;;
   (main))
