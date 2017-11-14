@@ -116,32 +116,65 @@
 (define (more-ones? a b)
   (: A : Register) (define A (box a))
   (: B : Register) (define B (box b))
-  ;; C is created as a 'mask' 
+  ;; C is created for hold and operation for &= in sumBit
   (: C : Register) (define C (box 1))
-  ;; D is for store the num of 1 bits
+  ;; D is for store the num of 1 bits for sumBit
   (: D : Register) (define D (box 0))
-  ;; E is the place where the number is being counted
+  ;; E is used for store the input value for sumBit
   (: E : Register) (define E (box 0))
-  ;; F is the counter
-  (: F : Register) (define F (box 31))
+  ;; F is used to indicate the times of calling sumBit, since
+  ;; there is no stack
+  (: F : Register) (define F (box 0))
+  ;; however, since this is racket, we can use void function to avoid the type
+  ;; requirement not put statement return int into non-tail position
+  ;; in this solution, not using void trick
 
   
   ;; ... more registers ...
   ;;
   (: main : Label)
+  (: main2 : Label)
+  (: main3 : Label)
+  (: ret1 : Label)
+  (: ret2 : Label)
   ;; ... more labels ...
-  (: sumA     : Label)
-  (: checkBit : Label)
-  (: sumB     : Label)
-  (: comP     : Label)
+  (: sumBit    : Label)
+  (: true-part : Label)
+  (: loop-body : Label)
+  (: update : Label)
+  (: after-loop : Label)
   
-  ;;
-  (define (main) (goto sumA)
-                 (goto sumB)
-                 (goto comP))
-  (define (sumA) (mov E A)
-                 (and E C)
-                 (ifp 
+  ;; definitions of chunks
+  (define (sumBit)
+    (ifp E loop-body after-loop))
+  (define (loop-body)
+    (mov C E)
+    (andi C 1)
+    (ifp C true-part update))
+  (define (true-part)
+    (addi D 1)
+    (goto update))
+  (define (update)
+    (shri E 1)
+    (goto sumBit))
+  (define (after-loop)
+    (ifp F main3 main2))
+  (define (main)
+    (mov E A)
+    (movi D 0)
+    (goto sumBit))
+  (define (main2)
+    (mov E B)
+    (mov A D)
+    (movi D 0)
+    (movi F 1)
+    (goto sumBit))
+  (define (main3)
+    (mov B D)
+    (sub A B)
+    (ifp A ret1 ret2))
+  (define (ret1) 1)
+  (define (ret2) 0)
   ;; ... more thunks ...
   ;;
   (main))
