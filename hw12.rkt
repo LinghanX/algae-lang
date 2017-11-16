@@ -11,6 +11,7 @@
            | { bind {{ <id> <TOY> } ... } <TOY> }
            | { bindrec {{ <id> <TOY> } ... } <TOY> }
            | { fun { <id> ... } <TOY> }
+           | { rfun { <id> ... } <TOY> }
            | { if <TOY> <TOY> <TOY> }
            | { <TOY> <TOY> ... }
            | { set! <id> <TOY> }
@@ -23,6 +24,7 @@
   [Bind (Listof Symbol) (Listof TOY) (Listof TOY)]
   [BindRec (Listof Symbol) (Listof TOY) (Listof TOY)]
   [Fun  (Listof Symbol) (Listof TOY)]
+  [RFun (Listof Symbol) (Listof TOY)]
   [Call TOY (Listof TOY)]
   [If   TOY TOY TOY]
   [Set Symbol TOY])
@@ -60,11 +62,13 @@
        [(list 'set! (symbol: id) body)
         (Set id (parse-sexpr body))]
        [else (error 'parse-sexpr "bad `set!' syntax in ~s" sexpr)])]
-    [(cons 'fun more)
+    [(cons (and fdef (or 'rfun 'fun)) more)
      (match sexpr
-       [(list 'fun (list (symbol: names) ...) body0 body ...)
+       [(list _ (list (symbol: names) ...) body0 body ...)
         (if (unique-list? names)
-            (Fun names (map parse-sexpr (cons body0 body)))
+            ((if (eq? fdef 'fun) Fun RFun)
+             names
+             (map parse-sexpr (cons body0 body)))
             (error 'parse-sexpr "duplicate `fun' names: ~s" names))]
        [else (error 'parse-sexpr "bad `fun' syntax in ~s" sexpr)])]
     [(cons 'if more)
@@ -96,7 +100,8 @@
 
 (define-type VAL
   [RktV  Any]
-  [FunV  (Listof Symbol) (Listof TOY) ENV]
+  ;; add FunV an by-ref? propertie
+  [FunV  (Listof Symbol) (Listof TOY) ENV Boolean]
   [PrimV ((Listof VAL) -> VAL)]
   [BogusV])
 
@@ -210,16 +215,23 @@
     [(BindRec names exprs bound-body)
      (eval-list bound-body (extend-rec names exprs env))]
     [(Fun names bound-body)
-     (FunV names bound-body env)]
+     (FunV names bound-body env #f)]
+    [(RFun names bound-body)
+     (FunV names bound-body env #t)]
     [(Set id body)
      (set-box! (lookup id env) (eval body env)) the-bogus-value]
     [(Call fun-expr arg-exprs)
-     (let ([fval (eval* fun-expr)]
-           [arg-vals (map eval* arg-exprs)])
+     (let ([fval (eval* fun-expr)])
        (cases fval
-         [(PrimV proc) (proc arg-vals)]
-         [(FunV names body fun-env)
-          (eval-list body (extend names arg-vals fun-env))]
+         [(PrimV proc) (proc (map eval* arg-exprs))]
+         [(FunV names body fun-env by-ref?)
+          (if by-ref?
+              (eval-list
+               body
+               (raw-extend names (get-boxes arg-exprs env) fun-env))
+              (eval-list
+               body
+               (extend names (map eval* arg-exprs) fun-env)))]
          [else (error 'eval "function call with a non-function: ~s"
                       fval)]))]
     [(If cond-expr then-expr else-expr)
@@ -228,6 +240,17 @@
                   [else #t])   ; other values are always true
                 then-expr
                 else-expr))]))
+
+(: get-boxes : (Listof TOY) ENV -> (Listof (Boxof VAL)))
+;; since mixing the check args is identifier inside this function, not using
+;; an map
+(define (get-boxes args env)
+  (if (null? args)
+      null
+      (cases (first args)
+        [(Id name) (cons (lookup name env) (get-boxes (rest args) env))]
+        [else (error 'get-bodex
+                     "must passing an identifier, got ~s" (first args))])))
 
 (: run : String -> Any)
 ;; evaluate a TOY program contained in a string
@@ -284,6 +307,7 @@
       "parse-sexpr: bad `set!' syntax in (set! x 4 5 6)")
 (test (run "{bind {{x 4}} {bind {{_ {set! x {+ x 1}}}} {+ x x}}}") => 10)
 
+;;; ----------------------------------------------------------------
 ;; test for bindrec
 (test (run "{bindrec {{x 2} {y {+ x 1}} {z {* x y}}} z}") => 6)
 
@@ -305,4 +329,20 @@
       => 21)
 (test (run "{bindrec {{x 5} {f {fun {} {set! x {+ 1 x}} x}}} {f} {f}}") => 7)
 
-;;; ----------------------------------------------------------------
+;; test for swap provided by hw 12
+(test (run "{bind {{swap! {rfun {x y}
+                            {bind {{tmp x}}
+                              {set! x y}
+                              {set! y tmp}}}}
+                   {a 1}
+                   {b 2}}
+              {swap! a b}
+              {+ a {* 10 b}}}")
+      => 12)
+
+(test (run "{{rfun {x} x} {/ 4 0}}") =error>
+  "get-bodex: must passing an identifier, got (Call (Id /) ((Num 4) (Num 0)))")
+(test (run "{5 {/ 6 0}}") =error>
+      "eval: function call with a non-function: (RktV 5)")
+
+(define minutes-spent 194)
