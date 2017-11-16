@@ -12,6 +12,7 @@
            | { fun { <id> ... } <TOY> }
            | { if <TOY> <TOY> <TOY> }
            | { <TOY> <TOY> ... }
+           | { set! <id> <TOY> }
 |#
 
 ;; A matching abstract syntax tree datatype:
@@ -21,7 +22,8 @@
   [Bind (Listof Symbol) (Listof TOY) TOY]
   [Fun  (Listof Symbol) TOY]
   [Call TOY (Listof TOY)]
-  [If   TOY TOY TOY])
+  [If   TOY TOY TOY]
+  [Set Symbol TOY])
 
 (: unique-list? : (Listof Any) -> Boolean)
 ;; Tests whether a list is unique, guards Bind and Fun values.
@@ -46,6 +48,11 @@
             (error 'parse-sexpr "duplicate `bind' names: ~s"
                    names))]
        [else (error 'parse-sexpr "bad `bind' syntax in ~s" sexpr)])]
+    [(cons 'set! more)
+     (match sexpr
+       [(list 'set! (symbol: id) body)
+        (Set id (parse-sexpr body))]
+       [else (error 'parse-sexpr "bad `set!' syntax in ~s" sexpr)])]
     [(cons 'fun more)
      (match sexpr
        [(list 'fun (list (symbol: names) ...) body)
@@ -83,21 +90,26 @@
 (define-type VAL
   [RktV  Any]
   [FunV  (Listof Symbol) TOY ENV]
-  [PrimV ((Listof VAL) -> VAL)])
+  [PrimV ((Listof VAL) -> VAL)]
+  [BogusV])
+
+;; a bogus value for return of set!
+(define the-bogus-value [BogusV])
 
 (: extend : (Listof Symbol) (Listof VAL) ENV -> ENV)
+;; extend environment with a new frame
 (define (extend names values env)
   (raw-extend names (map (inst box VAL) values) env))
 
 (: raw-extend : (Listof Symbol) (Listof (Boxof VAL)) ENV -> ENV)
-;; raw-extends an environment with a new frame.
+;; raw-extends create new frame to extend the environment
 (define (raw-extend names boxes env)
   (if (= (length names) (length boxes))
       (FrameEnv (map (lambda ([name : Symbol] [box : (Boxof VAL)])
                        (list name box))
                      names boxes)
                 env)
-      (error 'extend "arity mismatch for names: ~s" names)))
+      (error 'raw-extend "arity mismatch for names: ~s" names)))
 
 (: lookup : Symbol ENV -> (Boxof VAL))
 ;; lookup a symbol in an environment, frame by frame,
@@ -161,6 +173,8 @@
      (eval bound-body (extend names (map eval* exprs) env))]
     [(Fun names bound-body)
      (FunV names bound-body env)]
+    [(Set id body)
+     (set-box! (lookup id env) (eval body env)) the-bogus-value]
     [(Call fun-expr arg-exprs)
      (let ([fval (eval* fun-expr)]
            [arg-vals (map eval* arg-exprs)])
