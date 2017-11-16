@@ -9,6 +9,7 @@
    <TOY> ::= <num>
            | <id>
            | { bind {{ <id> <TOY> } ... } <TOY> }
+           | { bindrec {{ <id> <TOY> } ... } <TOY> }
            | { fun { <id> ... } <TOY> }
            | { if <TOY> <TOY> <TOY> }
            | { <TOY> <TOY> ... }
@@ -20,6 +21,7 @@
   [Num  Number]
   [Id   Symbol]
   [Bind (Listof Symbol) (Listof TOY) TOY]
+  [BindRec (Listof Symbol) (Listof TOY) TOY]
   [Fun  (Listof Symbol) TOY]
   [Call TOY (Listof TOY)]
   [If   TOY TOY TOY]
@@ -38,13 +40,18 @@
   (match sexpr
     [(number: n)    (Num n)]
     [(symbol: name) (Id name)]
-    [(cons 'bind more)
+    [(cons (and binder (or 'bind 'bindrec)) more)
      (match sexpr
-       [(list 'bind (list (list (symbol: names) (sexpr: nameds))
+       [(list _ (list (list (symbol: names) (sexpr: nameds))
                           ...)
               body)
         (if (unique-list? names)
-            (Bind names (map parse-sexpr nameds) (parse-sexpr body))
+            ((if (eq? binder 'bind)
+                 Bind
+                 BindRec)
+             names
+             (map parse-sexpr nameds)
+             (parse-sexpr body))
             (error 'parse-sexpr "duplicate `bind' names: ~s"
                    names))]
        [else (error 'parse-sexpr "bad `bind' syntax in ~s" sexpr)])]
