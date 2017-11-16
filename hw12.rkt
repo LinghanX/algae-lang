@@ -118,6 +118,27 @@
                 env)
       (error 'raw-extend "arity mismatch for names: ~s" names)))
 
+(: extend-rec : (Listof Symbol) (Listof TOY) ENV -> ENV)
+;; extends an environment with a new recursive frame.
+(define (extend-rec names exprs env)
+  ;; assume the lenght of names is same as exprs
+  (: new-frame : FRAME)
+  (define new-frame
+    (map (lambda ([x : Symbol]) (list x (box the-bogus-value))) names))
+  (define result (FrameEnv new-frame env))
+  (for-each
+   ;; call for-each with two list, the new-frame which is new id -> VAL binding
+   ;; and exprs is the list of exprs
+   ;; the lambda passed will be called with parameter from new-frame and exprs
+   ;; that are at the same index, each iteration the element from exprs will be
+   ;; evaluated under the "result" stack (at first will be all BogusV value)
+   ;; and then update the bogus value into real result
+   (lambda ([pair : (List Symbol (Boxof VAL))] [expr : TOY])
+     (set-box! (second pair) (eval expr result)))
+   new-frame
+   exprs)
+  result)
+
 (: lookup : Symbol ENV -> (Boxof VAL))
 ;; lookup a symbol in an environment, frame by frame,
 ;; return its value or throw an error if it isn't bound
@@ -178,6 +199,8 @@
     [(Id name) (unbox (lookup name env))]
     [(Bind names exprs bound-body)
      (eval bound-body (extend names (map eval* exprs) env))]
+    [(BindRec names exprs bound-body)
+     (eval bound-body (extend-rec names exprs env))]
     [(Fun names bound-body)
      (FunV names bound-body env)]
     [(Set id body)
@@ -252,5 +275,8 @@
 (test (run "{set! x 4 5 6}") =error>
       "parse-sexpr: bad `set!' syntax in (set! x 4 5 6)")
 (test (run "{bind {{x 4}} {bind {{_ {set! x {+ x 1}}}} {+ x x}}}") => 10)
+
+;; test for bindrec
+(test (run "{bindrec {{x 2} {y {+ x 1}} {z {* x y}}} z}") => 6)
 
 ;;; ----------------------------------------------------------------
