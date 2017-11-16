@@ -54,9 +54,9 @@
              names
              (map parse-sexpr nameds)
              (map parse-sexpr (cons body0 body)))
-            (error 'parse-sexpr "duplicate `bind' names: ~s"
-                   names))]
-       [else (error 'parse-sexpr "bad `bind' syntax in ~s" sexpr)])]
+            (error 'parse-sexpr "duplicate `~s' names: ~s"
+                   binder names))]
+       [else (error 'parse-sexpr "bad `~s' syntax in ~s" binder sexpr)])]
     [(cons 'set! more)
      (match sexpr
        [(list 'set! (symbol: id) body)
