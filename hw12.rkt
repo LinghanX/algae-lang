@@ -241,5 +241,9 @@
 (test (run "{if {< 5 4} 6 7}")  => 7)
 (test (run "{if + 6 7}")        => 6)
 (test (run "{fun {x} x}")       =error> "returned a bad value")
+(test (run "{bind {{x 5}} {bind {{_ {set! x 4}}} x}}") => 4)
+(test (run "{set! x 4 5 6}") =error>
+      "parse-sexpr: bad `set!' syntax in (set! x 4 5 6)")
+(test (run "{bind {{x 4}} {bind {{_ {set! x {+ x 1}}}} {+ x x}}}") => 10)
 
 ;;; ----------------------------------------------------------------
