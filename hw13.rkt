@@ -117,7 +117,7 @@
 (define (extend names values env)
   (raw-extend names (map (inst box VAL) values) env))
 
-(: extend-rec : (Listof Symbol) (Listof TOY) ENV -> ENV)
+(: extend-rec : (Listof Symbol) (Listof (-> ENV VAL)) ENV -> ENV)
 ;; extends an environment with a new recursive frame (given
 ;; expressions).
 ;;
@@ -142,10 +142,9 @@
   ;; different lengths
   ;; fix compiler disabled
   (set-box! compiler-enabled? #t)
-  (for-each (lambda ([name : Symbol] [expr : TOY])
-              (set-box! (lookup name new-env) ((compile expr) new-env)))
-            names exprs)
-  new-env)
+  (for-each (lambda ([name : Symbol] [expr : (-> ENV VAL)])
+              (set-box! (lookup name new-env) (expr new-env)))
+            names exprs) new-env)
 
 (: lookup : Symbol ENV -> (Boxof VAL))
 ;; looks for a name in an environment, searching through each frame.
@@ -249,9 +248,17 @@
        (set-box! (lookup name env) ((compile new) env))
        the-bogus-value]
       [(Bind names exprs bound-body)
-       ((compile-body bound-body) (extend names (map compile* exprs) env))]
+       ;; fix compiler disabled
+       (set-box! compiler-enabled? #t)
+       (let ([compiled-exprs (map compile exprs)]
+             [compiled-body (compile-body bound-body)])
+         (compiled-body (extend names (map (runner env) compiled-exprs) env)))]
       [(BindRec names exprs bound-body)
-       ((compile-body bound-body) (extend-rec names exprs env))]
+       ;; fix compiler disabled
+       (set-box! compiler-enabled? #t)
+       (let ([compiled-exprs (map compile exprs)]
+             [compiled-body (compile-body bound-body)])
+         (compiled-body (extend-rec names compiled-exprs env)))]
       [(Fun names bound-body)
        (FunV names bound-body env #f)]
       [(RFun names bound-body)
