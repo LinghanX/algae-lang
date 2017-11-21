@@ -199,11 +199,15 @@
 (define (compile-body exprs)
   (lambda (env)
     ;; note: relies on the fact that the body is never empty
-    (let ([1st  (compile (first exprs))]
-          [rest (rest exprs)])
-      (if (null? rest)
-          (1st env)
-          ((compile-body rest) env))))
+    (let ([compiled-exprs (map compile exprs)])
+      (foldl (lambda ([expr : (-> ENV VAL)] [old : VAL]) (expr env))
+             ((first compiled-exprs) env)
+             (rest compiled-exprs))))
+;    (let ([1st  (compile (first exprs))]
+;          [rest (rest exprs)])
+;      (if (null? rest)
+;          (1st env)
+;          ((compile-body rest) env))))
   ;; a shorter version that uses `foldl'
   ;; (foldl (lambda ([expr : TOY] [old : VAL]) (compile expr env))
   ;;        (compile (first exprs) env)
@@ -391,4 +395,4 @@
 
 ;;; ==================================================================
 
-(define minutes-spent 120)
+(define minutes-spent 160)
