@@ -226,6 +226,11 @@
 ;; a global flag that can disable the compiler
 (define compiler-enabled? (box #f))
 
+;; convenient helper for running compiled code
+(: runner : ENV -> (ENV -> VAL) -> VAL)
+(define (runner env)
+  (lambda (compiled) (compiled env)))
+
 (: compile : TOY -> ENV -> VAL)
 ;; evaluates TOY expressions.
 (define (compile expr)
@@ -241,10 +246,9 @@
       [(Num n)   (RktV n)]
       [(Id name) (unbox (lookup name env))]
       [(Set name new)
-       (set-box! (lookup name env) (compile* new))
+       (set-box! (lookup name env) ((compile new) env))
        the-bogus-value]
       [(Bind names exprs bound-body)
-       
        ((compile-body bound-body) (extend names (map compile* exprs) env))]
       [(BindRec names exprs bound-body)
        ((compile-body bound-body) (extend-rec names exprs env))]
@@ -253,7 +257,9 @@
       [(RFun names bound-body)
        (FunV names bound-body env #t)]
       [(Call fun-expr arg-exprs)
-       (let ([fval (compile* fun-expr)]
+       ;; fix compiler disabled
+       (set-box! compiler-enabled? #t)
+       (let ([fval ((compile fun-expr) env)]
              ;; delay compiling the arguments
              [arg-vals (lambda () (map compile* arg-exprs))])
          (cases fval
@@ -269,11 +275,11 @@
       [(If cond-expr then-expr else-expr)
        ;; fix compiler disabled
        (set-box! compiler-enabled? #t)
-       (compile* (if (cases (compile* cond-expr)
+       ((compile (if (cases ((compile cond-expr) env)
                        [(RktV v) v] ; Racket value => use as boolean
                        [else #t])   ; other values are always true
                      then-expr
-                     else-expr))])))
+                     else-expr)) env)])))
 
 (: run : String -> Any)
 ;; compiles and runs a TOY program contained in a string
