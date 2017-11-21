@@ -198,21 +198,10 @@
 ;; evaluates a list of expressions, returns the last value.
 (define (compile-body exprs)
   (lambda (env)
-    ;; note: relies on the fact that the body is never empty
     (let ([compiled-exprs (map compile exprs)])
       (foldl (lambda ([expr : (-> ENV VAL)] [old : VAL]) (expr env))
              ((first compiled-exprs) env)
-             (rest compiled-exprs))))
-;    (let ([1st  (compile (first exprs))]
-;          [rest (rest exprs)])
-;      (if (null? rest)
-;          (1st env)
-;          ((compile-body rest) env))))
-  ;; a shorter version that uses `foldl'
-  ;; (foldl (lambda ([expr : TOY] [old : VAL]) (compile expr env))
-  ;;        (compile (first exprs) env)
-  ;;        (rest exprs))
-  )
+             (rest compiled-exprs)))))
 
 (: get-boxes : (Listof TOY) ENV -> (Listof (Boxof VAL)))
 ;; utility for applying rfun
@@ -239,37 +228,35 @@
 (define (compile expr)
   (unless (unbox compiler-enabled?)
     (error 'compile "compiler disabled"))
-  (lambda (env)
-    ;; convenient helper
-    (: compile* : TOY -> VAL)
-    (define (compile* expr)
-      ;; fix compiler disabled
-      (set-box! compiler-enabled? #t) ((compile expr) env))
-    (cases expr
-      [(Num n)   (RktV n)]
-      [(Id name) (unbox (lookup name env))]
-      [(Set name new)
+  ;; convenient helper
+  (cases expr
+    [(Num n)   (lambda ([env : ENV]) (RktV n))]
+    [(Id name) (lambda ([env : ENV]) (unbox (lookup name env)))]
+    [(Set name new)
+     (lambda ([env : ENV])
        (set-box! (lookup name env) ((compile new) env))
-       the-bogus-value]
-      [(Bind names exprs bound-body)
-       ;; fix compiler disabled
-       (set-box! compiler-enabled? #t)
-       (let ([compiled-exprs (map compile exprs)]
-             [compiled-body (compile-body bound-body)])
-         (compiled-body (extend names (map (runner env) compiled-exprs) env)))]
-      [(BindRec names exprs bound-body)
-       ;; fix compiler disabled
-       (set-box! compiler-enabled? #t)
-       (let ([compiled-exprs (map compile exprs)]
-             [compiled-body (compile-body bound-body)])
-         (compiled-body (extend-rec names compiled-exprs env)))]
-      [(Fun names bound-body)
-       (FunV names bound-body env #f)]
-      [(RFun names bound-body)
-       (FunV names bound-body env #t)]
-      [(Call fun-expr arg-exprs)
-       ;; fix compiler disabled
-       (set-box! compiler-enabled? #t)
+       the-bogus-value)]
+    [(Bind names exprs bound-body)
+     (let ([compiled-exprs (map compile exprs)]
+           [compiled-body (compile-body bound-body)])
+       (lambda ([env : ENV])
+         (compiled-body (extend names
+                                (map (runner env) compiled-exprs) env))))]
+    [(BindRec names exprs bound-body)
+     (let ([compiled-exprs (map compile exprs)]
+           [compiled-body (compile-body bound-body)])
+       (lambda ([env : ENV])
+         (compiled-body (extend-rec names compiled-exprs env))))]
+    [(Fun names bound-body)
+     (lambda ([env : ENV])
+       (FunV names bound-body env #f))]
+    [(RFun names bound-body)
+     (lambda ([env : ENV])
+       (FunV names bound-body env #t))]
+    [(Call fun-expr arg-exprs)
+     (lambda ([env : ENV])
+       (: compile* : TOY -> VAL)
+       (define (compile* expr) ((compile expr) env))
        (let ([fval ((compile fun-expr) env)]
              ;; delay compiling the arguments
              [arg-vals (lambda () (map compile* arg-exprs))])
@@ -282,15 +269,17 @@
                                                  fun-env)
                                      (extend names (arg-vals) fun-env)))]
            [else (error 'compile "function call with a non-function: ~s"
-                        fval)]))]
-      [(If cond-expr then-expr else-expr)
-       ;; fix compiler disabled
-       (set-box! compiler-enabled? #t)
-       ((compile (if (cases ((compile cond-expr) env)
-                       [(RktV v) v] ; Racket value => use as boolean
-                       [else #t])   ; other values are always true
-                     then-expr
-                     else-expr)) env)])))
+                        fval)])))]
+    [(If cond-expr then-expr else-expr)
+     (let ([compiled-cond (compile cond-expr)]
+           [compiled-then (compile then-expr)]
+           [compiled-else (compile else-expr)])
+       (lambda ([env : ENV])
+         ((if (cases (compiled-cond env)
+                [(RktV v) v] ; Racket value => use as boolean
+                [else #t])   ; other values are always true
+              compiled-then
+              compiled-else) env)))]))
 
 (: run : String -> Any)
 ;; compiles and runs a TOY program contained in a string
