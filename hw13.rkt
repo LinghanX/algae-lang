@@ -95,7 +95,7 @@
 (define-type VAL
   [BogusV]
   [RktV  Any]
-  [FunV  (Listof Symbol) (Listof TOY) ENV Boolean] ; `byref?' flag
+  [FunV  (Listof Symbol) (-> ENV VAL) ENV Boolean] ; `byref?' flag
   [PrimV ((Listof VAL) -> VAL)])
 
 ;; a single bogus value to use wherever needed
@@ -197,8 +197,8 @@
 (: compile-body : (Listof TOY) -> ENV -> VAL)
 ;; evaluates a list of expressions, returns the last value.
 (define (compile-body exprs)
-  (lambda (env)
-    (let ([compiled-exprs (map compile exprs)])
+  (let ([compiled-exprs (map compile exprs)])
+    (lambda (env)
       (foldl (lambda ([expr : (-> ENV VAL)] [old : VAL]) (expr env))
              ((first compiled-exprs) env)
              (rest compiled-exprs)))))
@@ -233,9 +233,10 @@
     [(Num n)   (lambda ([env : ENV]) (RktV n))]
     [(Id name) (lambda ([env : ENV]) (unbox (lookup name env)))]
     [(Set name new)
-     (lambda ([env : ENV])
-       (set-box! (lookup name env) ((compile new) env))
-       the-bogus-value)]
+     (let ([new-compiled (compile new)])
+       (lambda ([env : ENV])
+         (set-box! (lookup name env) (new-compiled env))
+         the-bogus-value))]
     [(Bind names exprs bound-body)
      (let ([compiled-exprs (map compile exprs)]
            [compiled-body (compile-body bound-body)])
@@ -248,26 +249,35 @@
        (lambda ([env : ENV])
          (compiled-body (extend-rec names compiled-exprs env))))]
     [(Fun names bound-body)
-     (lambda ([env : ENV])
-       (FunV names bound-body env #f))]
+     (let ([compiled-body (compile-body bound-body)])
+       (lambda ([env : ENV])
+         (FunV names compiled-body env #f)))]
     [(RFun names bound-body)
-     (lambda ([env : ENV])
-       (FunV names bound-body env #t))]
+     (let ([compiled-body (compile-body bound-body)])
+       (lambda ([env : ENV])
+         (FunV names compiled-body env #t)))]
     [(Call fun-expr arg-exprs)
-     (lambda ([env : ENV])
-       (: compile* : TOY -> VAL)
-       (define (compile* expr) ((compile expr) env))
-       (let ([fval ((compile fun-expr) env)]
-             ;; delay compiling the arguments
-             [arg-vals (lambda () (map compile* arg-exprs))])
-         (cases fval
-           [(PrimV proc) (proc (arg-vals))]
+     (let ([fval (compile fun-expr)]
+           ;; delay compiling the arguments
+           [arg-vals (map compile arg-exprs)])
+       (lambda ([env : ENV])
+         (: compile* : TOY -> VAL)
+         (define (compile* expr) ((compile expr) env))
+
+         (: calc-val : (Listof (-> ENV VAL)) ENV -> (Listof VAL))
+         (define (calc-val args env)
+           (map (lambda ([arg-val : (-> ENV VAL)])
+                  (arg-val env)) args))
+         (cases (fval env)
+           [(PrimV proc) (proc (calc-val arg-vals env))]
            [(FunV names body fun-env byref?)
-            ((compile-body body) (if byref?
-                                     (raw-extend names
-                                                 (get-boxes arg-exprs env)
-                                                 fun-env)
-                                     (extend names (arg-vals) fun-env)))]
+            (body (if byref?
+                      (raw-extend names
+                                  (get-boxes arg-exprs env)
+                                  fun-env)
+                      (extend names
+                              (calc-val arg-vals env)
+                              fun-env)))]
            [else (error 'compile "function call with a non-function: ~s"
                         fval)])))]
     [(If cond-expr then-expr else-expr)
