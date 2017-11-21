@@ -205,16 +205,31 @@
              ((first compiled-exprs) env)
              (rest compiled-exprs)))))
 
-(: get-boxes : (Listof TOY) ENV -> (Listof (Boxof VAL)))
+(: compile-get-boxes : (Listof TOY) -> (ENV -> (Listof (Boxof VAL))))
+; utility for applying rfun
+(define (compile-get-boxes exprs)
+  (: compile-getter : TOY -> (ENV -> (Boxof VAL)))
+  (define (compile-getter expr)
+    (cases expr
+      [(Id name)
+       (lambda ([env : ENV]) (lookup name env))]
+      [else
+       (lambda ([env : ENV])
+         (error 'compile "rfun application with a non-identifier"))]))
+  (unless (unbox compiler-enabled?)
+    (error 'compile "compiler disabled"))
+  (let ([getters (map compile-getter exprs)])
+    (lambda (env)
+      (map (lambda ([getter : (-> ENV (Boxof VAL))]) (getter env)) getters))))
 ;; utility for applying rfun
-(define (get-boxes exprs env)
-  (map (lambda ([e : TOY])
-         (cases e
-           [(Id name) (lookup name env)]
-           [else (error 'compile
-                        "rfun application with a non-identifier: ~s"
-                        e)]))
-       exprs))
+;(define (get-boxes exprs env)
+;  (map (lambda ([e : TOY])
+;         (cases e
+;           [(Id name) (lookup name env)]
+;           [else (error 'compile
+;                        "rfun application with a non-identifier: ~s"
+;                        e)]))
+;       exprs))
 
 (: compiler-enabled? : (Boxof Boolean))
 ;; a global flag that can disable the compiler
@@ -261,7 +276,8 @@
     [(Call fun-expr arg-exprs)
      (let ([fval (compile fun-expr)]
            ;; delay compiling the arguments
-           [arg-vals (map compile arg-exprs)])
+           [arg-vals (map compile arg-exprs)]
+           [compiled-boxes (compile-get-boxes arg-exprs)])
        (lambda ([env : ENV])
          ;; helper function to convert evaluate arguments
          (: calc-val : (Listof (-> ENV VAL)) ENV -> (Listof VAL))
@@ -273,7 +289,7 @@
            [(FunV names body fun-env byref?)
             (body (if byref?
                       (raw-extend names
-                                  (get-boxes arg-exprs env)
+                                  (compiled-boxes env)
                                   fun-env)
                       (extend names
                               (calc-val arg-vals env)
