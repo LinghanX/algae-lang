@@ -128,7 +128,7 @@
 ;;   (let* ([boxes   (map (lambda (x) (box the-bogus-value)) exprs)]
 ;;          [new-env (raw-extend names boxes env)])
 ;;     (for-each (lambda ([box : (Boxof VAL)] [expr : TOY])
-;;                 (set-box! box (eval expr new-env)))
+;;                 (set-box! box (compile expr new-env)))
 ;;               boxes exprs)
 ;;     new-env))
 ;;
@@ -141,7 +141,7 @@
   ;; called for `bindrec', and the syntax make it impossible to have
   ;; different lengths
   (for-each (lambda ([name : Symbol] [expr : TOY])
-              (set-box! (lookup name new-env) ((eval expr) new-env)))
+              (set-box! (lookup name new-env) ((compile expr) new-env)))
             names exprs)
   new-env)
 
@@ -165,7 +165,7 @@
     [else (error 'racket-func "bad input: ~s" x)]))
 
 (: racket-func->prim-val : Function -> (Boxof VAL))
-;; converts a racket function to a primitive evaluator function which
+;; converts a racket function to a primitive compileuator function which
 ;; is a PrimV holding a ((Listof VAL) -> VAL) function.  (the
 ;; resulting function will use the list function as is, and it is the
 ;; list function's responsibility to throw an error if it's given a
@@ -193,19 +193,19 @@
 ;;; ==================================================================
 ;;; Evaluation
 
-(: eval-body : (Listof TOY) -> ENV -> VAL)
+(: compile-body : (Listof TOY) -> ENV -> VAL)
 ;; evaluates a list of expressions, returns the last value.
-(define (eval-body exprs)
+(define (compile-body exprs)
   (lambda (env)
     ;; note: relies on the fact that the body is never empty
-    (let ([1st  (eval (first exprs))]
+    (let ([1st  (compile (first exprs))]
           [rest (rest exprs)])
       (if (null? rest)
           (1st env)
-          ((eval-body rest) env))))
+          ((compile-body rest) env))))
   ;; a shorter version that uses `foldl'
-  ;; (foldl (lambda ([expr : TOY] [old : VAL]) (eval expr env))
-  ;;        (eval (first exprs) env)
+  ;; (foldl (lambda ([expr : TOY] [old : VAL]) (compile expr env))
+  ;;        (compile (first exprs) env)
   ;;        (rest exprs))
   )
 
@@ -215,61 +215,71 @@
   (map (lambda ([e : TOY])
          (cases e
            [(Id name) (lookup name env)]
-           [else (error 'eval
+           [else (error 'compile
                         "rfun application with a non-identifier: ~s"
                         e)]))
        exprs))
 
-(: eval : TOY -> ENV -> VAL)
+(: compiler-enabled? : (Boxof Boolean))
+;; a global flag that can disable the compiler
+(define compiler-enabled? (box #f))
+
+(: compile : TOY -> ENV -> VAL)
 ;; evaluates TOY expressions.
-(define (eval expr)
+(define (compile expr)
+  (unless (unbox compiler-enabled?)
+    (error 'compile "compiler disabled"))
   (lambda (env)
     ;; convenient helper
-    (: eval* : TOY -> VAL)
-    (define (eval* expr) ((eval expr) env))
+    (: compile* : TOY -> VAL)
+    (define (compile* expr) ((compile expr) env))
     (cases expr
       [(Num n)   (RktV n)]
       [(Id name) (unbox (lookup name env))]
       [(Set name new)
-       (set-box! (lookup name env) (eval* new))
+       (set-box! (lookup name env) (compile* new))
        the-bogus-value]
       [(Bind names exprs bound-body)
-       ((eval-body bound-body) (extend names (map eval* exprs) env))]
+       ((compile-body bound-body) (extend names (map compile* exprs) env))]
       [(BindRec names exprs bound-body)
-       ((eval-body bound-body) (extend-rec names exprs env))]
+       ((compile-body bound-body) (extend-rec names exprs env))]
       [(Fun names bound-body)
        (FunV names bound-body env #f)]
       [(RFun names bound-body)
        (FunV names bound-body env #t)]
       [(Call fun-expr arg-exprs)
-       (let ([fval (eval* fun-expr)]
-             ;; delay evaluating the arguments
-             [arg-vals (lambda () (map eval* arg-exprs))])
+       (let ([fval (compile* fun-expr)]
+             ;; delay compiling the arguments
+             [arg-vals (lambda () (map compile* arg-exprs))])
          (cases fval
            [(PrimV proc) (proc (arg-vals))]
            [(FunV names body fun-env byref?)
-            ((eval-body body) (if byref?
-                                  (raw-extend names
-                                              (get-boxes arg-exprs env)
-                                              fun-env)
-                                  (extend names (arg-vals) fun-env)))]
-           [else (error 'eval "function call with a non-function: ~s"
+            ((compile-body body) (if byref?
+                                     (raw-extend names
+                                                 (get-boxes arg-exprs env)
+                                                 fun-env)
+                                     (extend names (arg-vals) fun-env)))]
+           [else (error 'compile "function call with a non-function: ~s"
                         fval)]))]
       [(If cond-expr then-expr else-expr)
-       (eval* (if (cases (eval* cond-expr)
-                    [(RktV v) v] ; Racket value => use as boolean
-                    [else #t])   ; other values are always true
-                  then-expr
-                  else-expr))])))
+       (compile* (if (cases (compile* cond-expr)
+                       [(RktV v) v] ; Racket value => use as boolean
+                       [else #t])   ; other values are always true
+                     then-expr
+                     else-expr))])))
 
 (: run : String -> Any)
-;; evaluate a TOY program contained in a string
+;; compiles and runs a TOY program contained in a string
 (define (run str)
-  (let ([result ((eval (parse str)) global-environment)])
-    (cases result
-      [(RktV v) v]
-      [else (error 'run "evaluation returned a bad value: ~s"
-                   result)])))
+  (set-box! compiler-enabled? #t)
+  (let ([compiled (compile (parse str))])
+    (set-box! compiler-enabled? #f)
+    (let ([result (compiled global-environment)])
+      (cases result
+        [(RktV v) v]
+        [else (error 'run
+                     "the program returned a bad value: ~s"
+                     result)]))))
 
 ;;; ==================================================================
 ;;; Tests
@@ -355,7 +365,7 @@
               {+ a {* 10 b}}}")
       => 12)
 
-;; test that argument are not evaluated redundantly
+;; test that argument are not compileuated redundantly
 (test (run "{{rfun {x} x} {/ 4 0}}") =error> "non-identifier")
 (test (run "{5 {/ 6 0}}") =error> "non-function")
 
