@@ -140,6 +140,8 @@
   ;; note: no need to check the lengths here, since this is only
   ;; called for `bindrec', and the syntax make it impossible to have
   ;; different lengths
+  ;; fix compiler disabled
+  (set-box! compiler-enabled? #t)
   (for-each (lambda ([name : Symbol] [expr : TOY])
               (set-box! (lookup name new-env) ((compile expr) new-env)))
             names exprs)
@@ -232,7 +234,9 @@
   (lambda (env)
     ;; convenient helper
     (: compile* : TOY -> VAL)
-    (define (compile* expr) ((compile expr) env))
+    (define (compile* expr)
+      ;; fix compiler disabled
+      (set-box! compiler-enabled? #t) ((compile expr) env))
     (cases expr
       [(Num n)   (RktV n)]
       [(Id name) (unbox (lookup name env))]
@@ -240,6 +244,7 @@
        (set-box! (lookup name env) (compile* new))
        the-bogus-value]
       [(Bind names exprs bound-body)
+       
        ((compile-body bound-body) (extend names (map compile* exprs) env))]
       [(BindRec names exprs bound-body)
        ((compile-body bound-body) (extend-rec names exprs env))]
@@ -262,6 +267,8 @@
            [else (error 'compile "function call with a non-function: ~s"
                         fval)]))]
       [(If cond-expr then-expr else-expr)
+       ;; fix compiler disabled
+       (set-box! compiler-enabled? #t)
        (compile* (if (cases (compile* cond-expr)
                        [(RktV v) v] ; Racket value => use as boolean
                        [else #t])   ; other values are always true
@@ -370,3 +377,5 @@
 (test (run "{5 {/ 6 0}}") =error> "non-function")
 
 ;;; ==================================================================
+
+(define minutes-spent 120)
