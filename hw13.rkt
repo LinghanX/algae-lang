@@ -282,12 +282,8 @@
            [(PrimV proc) (proc (calc-val arg-vals env))]
            [(FunV names body fun-env byref?)
             (body (if byref?
-                      (raw-extend names
-                                  (compiled-boxes env)
-                                  fun-env)
-                      (extend names
-                              (calc-val arg-vals env)
-                              fun-env)))]
+                      (raw-extend names (compiled-boxes env) fun-env)
+                      (extend names (calc-val arg-vals env) fun-env)))]
            [else (error 'compile "function call with a non-function: ~s"
                         fval)])))]
     [(If cond-expr then-expr else-expr)
@@ -411,10 +407,10 @@
       =error> "compile: compiler disabled")
 (test (compile-body (list (parse "{{rfun {x} x} 4}")
                           (parse "{{rfun {x} x} 4}")))
-      =error> "compile: compiler disabled")
+      =error> "compile: compiler-body disabled")
 (test (compile-get-boxes (list (parse "{{rfun {x} x} 4}")
                                (parse "{{rfun {x} x} 4}")))
-      =error> "compile: compiler disabled")
+      =error> "compile: compiler-get-boxes disabled")
 
 ;;; ==================================================================
 
