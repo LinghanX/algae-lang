@@ -408,6 +408,16 @@
 (test (run "{{rfun {x} x} {/ 4 0}}") =error> "non-identifier")
 (test (run "{5 {/ 6 0}}") =error> "non-function")
 
+;; test compiler disabled errors
+(test (compile (parse "{{fun {x} {+ x 1}} 4}"))
+      =error> "compile: compiler disabled")
+(test (compile-body (list (parse "{{rfun {x} x} 4}")
+                          (parse "{{rfun {x} x} 4}")))
+      =error> "compile: compiler disabled")
+(test (compile-get-boxes (list (parse "{{rfun {x} x} 4}")
+                          (parse "{{rfun {x} x} 4}")))
+      =error> "compile: compiler disabled")
+
 ;;; ==================================================================
 
 (define minutes-spent 260)
