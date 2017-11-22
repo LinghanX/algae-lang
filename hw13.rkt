@@ -196,7 +196,7 @@
 ;; evaluates a list of expressions, returns the last value.
 (define (compile-body exprs)
   (unless (unbox compiler-enabled?)
-    (error 'compile "compiler disabled"))
+    (error 'compile "compiler-body disabled"))
   (let ([compiled-exprs (map compile exprs)])
     (lambda (env)
       (foldl (lambda ([expr : (-> ENV VAL)] [old : VAL]) (expr env))
@@ -216,19 +216,10 @@
        (lambda ([env : ENV])
          (error 'compile "rfun application with a non-identifier"))]))
   (unless (unbox compiler-enabled?)
-    (error 'compile "compiler disabled"))
+    (error 'compile "compiler-get-boxes disabled"))
   (let ([getters (map compile-getter exprs)])
     (lambda (env)
       (map (lambda ([getter : (-> ENV (Boxof VAL))]) (getter env)) getters))))
-;; utility for applying rfun
-;(define (get-boxes exprs env)
-;  (map (lambda ([e : TOY])
-;         (cases e
-;           [(Id name) (lookup name env)]
-;           [else (error 'compile
-;                        "rfun application with a non-identifier: ~s"
-;                        e)]))
-;       exprs))
 
 (: compiler-enabled? : (Boxof Boolean))
 ;; a global flag that can disable the compiler
@@ -287,12 +278,8 @@
            [(PrimV proc) (proc (calc-val arg-vals env))]
            [(FunV names body fun-env byref?)
             (body (if byref?
-                      (raw-extend names
-                                  (compiled-boxes env)
-                                  fun-env)
-                      (extend names
-                              (calc-val arg-vals env)
-                              fun-env)))]
+                      (raw-extend names (compiled-boxes env) fun-env)
+                      (extend names (calc-val arg-vals env) fun-env)))]
            [else (error 'compile "function call with a non-function: ~s"
                         fval)])))]
     [(If cond-expr then-expr else-expr)
@@ -412,11 +399,11 @@
       =error> "compile: compiler disabled")
 (test (compile-body (list (parse "{{rfun {x} x} 4}")
                           (parse "{{rfun {x} x} 4}")))
-      =error> "compile: compiler disabled")
+      =error> "compile: compiler-body disabled")
 (test (compile-get-boxes (list (parse "{{rfun {x} x} 4}")
                                (parse "{{rfun {x} x} 4}")))
-      =error> "compile: compiler disabled")
+      =error> "compile: compiler-get-boxes disabled")
 
 ;;; ==================================================================
 
-(define minutes-spent 260)
+(define minutes-spent 310)
