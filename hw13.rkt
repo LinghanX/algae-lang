@@ -407,10 +407,10 @@
       =error> "compile: compiler disabled")
 (test (compile-body (list (parse "{{rfun {x} x} 4}")
                           (parse "{{rfun {x} x} 4}")))
-      =error> "compile: compiler-body disabled")
+      =error> "compile: compiler disabled")
 (test (compile-get-boxes (list (parse "{{rfun {x} x} 4}")
                                (parse "{{rfun {x} x} 4}")))
-      =error> "compile: compiler-get-boxes disabled")
+      =error> "compile: compiler disabled")
 
 ;;; ==================================================================
 
