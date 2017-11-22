@@ -193,16 +193,11 @@
 ;;; ==================================================================
 ;;; Evaluation
 
-;; check-compile
-(: check-compile : -> Void)
-(define (check-compile)
-  (unless (unbox compiler-enabled?)
-    (error 'compile "compiler disabled")))
-
 (: compile-body : (Listof TOY) -> ENV -> VAL)
 ;; evaluates a list of expressions, returns the last value.
 (define (compile-body exprs)
-  (check-compile)
+  (unless (unbox compiler-enabled?)
+    (error 'compile-body "compiler disabled"))
   (let ([compiled-exprs (map compile exprs)])
     (lambda (env)
       (foldl (lambda ([expr : (ENV -> VAL)] [old : VAL]) (expr env))
@@ -221,7 +216,8 @@
       [else
        (lambda ([env : ENV])
          (error 'compile "rfun application with a non-identifier"))]))
-  (check-compile)
+  (unless (unbox compiler-enabled?)
+    (error 'compile-get-boxes "compiler disabled"))
   (let ([getters (map compile-getter exprs)])
     (lambda (env)
       (map (lambda ([getter : (-> ENV (Boxof VAL))]) (getter env)) getters))))
@@ -238,7 +234,8 @@
 (: compile : TOY -> ENV -> VAL)
 ;; evaluates TOY expressions.
 (define (compile expr)
-  (check-compile)
+  (unless (unbox compiler-enabled?)
+    (error 'compile "compiler disabled"))
   ;; convenient helper
   (cases expr
     [(Num n)   (lambda ([env : ENV]) (RktV n))]
@@ -407,10 +404,10 @@
       =error> "compile: compiler disabled")
 (test (compile-body (list (parse "{{rfun {x} x} 4}")
                           (parse "{{rfun {x} x} 4}")))
-      =error> "compile: compiler disabled")
+      =error> "compile-body: compiler disabled")
 (test (compile-get-boxes (list (parse "{{rfun {x} x} 4}")
                                (parse "{{rfun {x} x} 4}")))
-      =error> "compile: compiler disabled")
+      =error> "compile-get-boxes: compiler disabled")
 
 ;;; ==================================================================
 
