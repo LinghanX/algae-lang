@@ -142,7 +142,8 @@
   ;; different lengths
   (for-each (lambda ([name : Symbol] [expr : (-> ENV VAL)])
               (set-box! (lookup name new-env) (expr new-env)))
-            names exprs) new-env)
+            names exprs)
+  new-env)
 
 (: lookup : Symbol ENV -> (Boxof VAL))
 ;; looks for a name in an environment, searching through each frame.
@@ -192,16 +193,21 @@
 ;;; ==================================================================
 ;;; Evaluation
 
+;; check-compile
+(: check-compile : -> Void)
+(define (check-compile)
+  (unless (unbox compiler-enabled?)
+    (error 'compile "compiler disabled")))
+
 (: compile-body : (Listof TOY) -> ENV -> VAL)
 ;; evaluates a list of expressions, returns the last value.
 (define (compile-body exprs)
-  (unless (unbox compiler-enabled?)
-    (error 'compile "compiler disabled"))
+  (check-compile)
   (let ([compiled-exprs (map compile exprs)])
     (lambda (env)
-      (foldl (lambda ([expr : (-> ENV VAL)] [old : VAL]) (expr env))
-             ((first compiled-exprs) env)
-             (rest compiled-exprs)))))
+      (foldl (lambda ([expr : (ENV -> VAL)] [old : VAL]) (expr env))
+             the-bogus-value
+             compiled-exprs))))
 
 (: compile-get-boxes : (Listof TOY) -> (ENV -> (Listof (Boxof VAL))))
 ; utility for applying rfun
@@ -215,20 +221,10 @@
       [else
        (lambda ([env : ENV])
          (error 'compile "rfun application with a non-identifier"))]))
-  (unless (unbox compiler-enabled?)
-    (error 'compile "compiler disabled"))
+  (check-compile)
   (let ([getters (map compile-getter exprs)])
     (lambda (env)
       (map (lambda ([getter : (-> ENV (Boxof VAL))]) (getter env)) getters))))
-;; utility for applying rfun
-;(define (get-boxes exprs env)
-;  (map (lambda ([e : TOY])
-;         (cases e
-;           [(Id name) (lookup name env)]
-;           [else (error 'compile
-;                        "rfun application with a non-identifier: ~s"
-;                        e)]))
-;       exprs))
 
 (: compiler-enabled? : (Boxof Boolean))
 ;; a global flag that can disable the compiler
@@ -242,8 +238,7 @@
 (: compile : TOY -> ENV -> VAL)
 ;; evaluates TOY expressions.
 (define (compile expr)
-  (unless (unbox compiler-enabled?)
-    (error 'compile "compiler disabled"))
+  (check-compile)
   ;; convenient helper
   (cases expr
     [(Num n)   (lambda ([env : ENV]) (RktV n))]
@@ -279,9 +274,9 @@
            [compiled-boxes (compile-get-boxes arg-exprs)])
        (lambda ([env : ENV])
          ;; helper function to convert evaluate arguments
-         (: calc-val : (Listof (-> ENV VAL)) ENV -> (Listof VAL))
+         (: calc-val : (Listof (ENV -> VAL)) ENV -> (Listof VAL))
          (define (calc-val args env)
-           (map (lambda ([arg-val : (-> ENV VAL)])
+           (map (lambda ([arg-val : (ENV -> VAL)])
                   (arg-val env)) args))
          (cases (fval env)
            [(PrimV proc) (proc (calc-val arg-vals env))]
@@ -304,7 +299,8 @@
                 [(RktV v) v] ; Racket value => use as boolean
                 [else #t])   ; other values are always true
               compiled-then
-              compiled-else) env)))]))
+              compiled-else)
+          env)))]))
 
 (: run : String -> Any)
 ;; compiles and runs a TOY program contained in a string
@@ -360,6 +356,9 @@
 (test (run "{if {< 5 4} 6 7}")  => 7)
 (test (run "{if + 6 7}")        => 6)
 (test (run "{fun {x} x}")       =error> "returned a bad value")
+;; test if shortcut
+(test (run "{if 1 5 {/ 4 0}}") => 5)
+(test (run "{if {< 2 1} {/ 0 0} 9}") => 9)
 
 ;; assignment tests
 (test (run "{set! {+ x 1} x}")  =error> "bad `set!' syntax")
@@ -419,4 +418,4 @@
 
 ;;; ==================================================================
 
-(define minutes-spent 260)
+(define minutes-spent 317)
