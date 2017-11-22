@@ -140,8 +140,6 @@
   ;; note: no need to check the lengths here, since this is only
   ;; called for `bindrec', and the syntax make it impossible to have
   ;; different lengths
-  ;; fix compiler disabled
-  (set-box! compiler-enabled? #t)
   (for-each (lambda ([name : Symbol] [expr : (-> ENV VAL)])
               (set-box! (lookup name new-env) (expr new-env)))
             names exprs) new-env)
@@ -208,6 +206,7 @@
 (: compile-get-boxes : (Listof TOY) -> (ENV -> (Listof (Boxof VAL))))
 ; utility for applying rfun
 (define (compile-get-boxes exprs)
+  ;; helper function to convert exprs
   (: compile-getter : TOY -> (ENV -> (Boxof VAL)))
   (define (compile-getter expr)
     (cases expr
@@ -415,7 +414,7 @@
                           (parse "{{rfun {x} x} 4}")))
       =error> "compile: compiler disabled")
 (test (compile-get-boxes (list (parse "{{rfun {x} x} 4}")
-                          (parse "{{rfun {x} x} 4}")))
+                               (parse "{{rfun {x} x} 4}")))
       =error> "compile: compiler disabled")
 
 ;;; ==================================================================
