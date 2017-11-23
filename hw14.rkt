@@ -85,9 +85,7 @@
 ;;; ==================================================================
 ;;; Values and environments
 
-(define-type ENV
-  [EmptyEnv]
-  [FrameEnv FRAME ENV])
+(define-type ENV = (Listof FRAME))
 
 ;; a frame is an association list of names and values.
 (define-type FRAME = (Listof (List Symbol (Boxof VAL))))
@@ -106,10 +104,10 @@
 ;; boxes
 (define (raw-extend names boxed-values env)
   (if (= (length names) (length boxed-values))
-      (FrameEnv (map (lambda ([name : Symbol] [boxed-val : (Boxof VAL)])
-                       (list name boxed-val))
-                     names boxed-values)
-                env)
+      (cons (map (lambda ([name : Symbol] [boxed-val : (Boxof VAL)])
+                   (list name boxed-val))
+                 names boxed-values)
+            env)
       (error 'raw-extend "arity mismatch for names: ~s" names)))
 
 (: extend : (Listof Symbol) (Listof VAL) ENV -> ENV)
@@ -136,13 +134,11 @@
 (: lookup : Symbol ENV -> (Boxof VAL))
 ;; looks for a name in an environment, searching through each frame.
 (define (lookup name env)
-  (cases env
-    [(EmptyEnv) (error 'lookup "no binding for ~s" name)]
-    [(FrameEnv frame rest)
-     (let ([cell (assq name frame)])
-       (if cell
-           (second cell)
-           (lookup name rest)))]))
+  (if (null? env) (error 'lookup "no binding for ~s" name)
+      (let ([cell (assq name (first env))])
+        (if cell
+            (second cell)
+            (lookup name (rest env))))))
 
 (: unwrap-rktv : VAL -> Any)
 ;; helper for `racket-func->prim-val': unwrap a RktV wrapper in
@@ -166,17 +162,16 @@
 ;; The global environment has a few primitives:
 (: global-environment : ENV)
 (define global-environment
-  (FrameEnv (list (list '+ (racket-func->prim-val +))
-                  (list '- (racket-func->prim-val -))
-                  (list '* (racket-func->prim-val *))
-                  (list '/ (racket-func->prim-val /))
-                  (list '< (racket-func->prim-val <))
-                  (list '> (racket-func->prim-val >))
-                  (list '= (racket-func->prim-val =))
-                  ;; values
-                  (list 'true  (box (RktV #t)))
-                  (list 'false (box (RktV #f))))
-            (EmptyEnv)))
+  (list (list (list '+ (racket-func->prim-val +))
+              (list '- (racket-func->prim-val -))
+              (list '* (racket-func->prim-val *))
+              (list '/ (racket-func->prim-val /))
+              (list '< (racket-func->prim-val <))
+              (list '> (racket-func->prim-val >))
+              (list '= (racket-func->prim-val =))
+              ;; values
+              (list 'true  (box (RktV #t)))
+              (list 'false (box (RktV #f))))))
 
 ;;; ==================================================================
 ;;; Compilation
