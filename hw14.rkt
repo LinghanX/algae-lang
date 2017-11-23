@@ -426,4 +426,29 @@
 (test (compile-get-boxes (list (Num 1)) DEFAULT-BINDINGS)
       =error> "compiler disabled")
 
+;; Given a symbol and bindings, find the index if it exists or #f
+(: find-index : Symbol BINDINGS -> (U #f (List Natural Natural)))
+(define (find-index s bindings) (find-index-x s bindings 0))
+
+;; helper to find the first index of a symbol
+(: find-index-x : Symbol BINDINGS Natural -> (U #f (List Natural Natural)))
+(define (find-index-x s bindings x)
+  (if (null? bindings)
+      #f
+      (if (member s (first bindings))
+          (list x (find-index-y s (first bindings) 0))
+          (find-index-x s (cdr bindings) (+ 1 x)))))
+
+;; helper to find the second index
+(: find-index-y : Symbol (Listof Symbol) Natural -> Natural)
+(define (find-index-y s symbols idx)
+  (if (equal? s (car symbols))
+      idx
+      (find-index-y s (cdr symbols) (+ 1 idx))))
+
+;; tests for find-index
+(test (find-index 'a '((a b c) () (c d e))) => '(0 0))
+(test (find-index 'e '((a b c) () (c d e))) => '(2 2))
+(test (find-index 'c '((a b c) () (c d e))) => '(0 2))
+(test (find-index 'x '((a b c) () (c d e))) => #f)
 ;;; ==================================================================
