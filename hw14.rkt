@@ -134,7 +134,7 @@
 (: lookup : Symbol ENV -> (Boxof VAL))
 ;; looks for a name in an environment, searching through each frame.
 (define (lookup name env)
-  (if (null? env) (error 'lookup "no binding for ~s" name)
+  (if (null? env)   (error 'lookup "no binding for ~s" name)
       (let ([cell (assq name (first env))])
         (if cell
             (second cell)
@@ -223,10 +223,14 @@
 ;; utility for applying rfun
 (define (compile-get-boxes exprs bindings)
   (: compile-getter : TOY -> (ENV -> (Boxof VAL)))
-  (define (compile-getter expr)
+  (define (compile-getter expr)    
     (cases expr
       [(Id name)
-       (lambda ([env : ENV]) (lookup name env))]
+       (let ([indexes (find-index name bindings)])
+         (lambda ([env : ENV])
+           (match indexes
+             [(list a b) (get-box-from-index indexes env)]
+             [#f (error 'compiler "mutating global value")])))]
       [else
        (lambda ([env : ENV])
          (error 'call "rfun application with a non-identifier ~s"
@@ -235,7 +239,7 @@
     (error 'compile-get-boxes "compiler disabled"))
   (let ([getters (map compile-getter exprs)])
     (lambda (env)
-      (map (lambda ([get-box : (ENV -> (Boxof VAL))]) (get-box env))
+      (map (lambda ([get-box : (ENV -> (Boxof VAL))])(get-box env))
            getters))))
 ;; Given a symbol and bindings, find the index if it exists or #f
 (: find-index : Symbol BINDINGS -> (U #f (List Natural Natural)))
@@ -273,33 +277,40 @@
     (error 'compile "compiler disabled"))
   (cases expr
     [(Num n)   (lambda ([env : ENV]) (RktV n))]
-    [(Id name) (lambda ([env : ENV]) (unbox (lookup name env)))]
+    [(Id name)
+     (let ([indexes (find-index name bindings)])
+       (match indexes
+         [(list a b) (lambda ([env : ENV])
+                       (unbox (get-box-from-index indexes env)))]
+         [#f (lambda ([env : ENV]) (unbox (lookup name env)))]))]
     [(Set name new)
      (let ([compiled-new (compile new bindings)]
            [indexes (match (find-index name bindings)
                       [(list a b) (list a b)]
-                      [else (error 'compile "cannot find name")])])
+                      [#f (if (lookup name global-environment)
+                              (error 'compile "mutating global value")
+                              (error 'compile "cannot find name"))])])
        (lambda ([env : ENV])
          (set-box! (get-box-from-index indexes env) (compiled-new env))
          the-bogus-value))]
     [(Bind names exprs bound-body)
      (let ([compiled-exprs (map (lambda ([expr : TOY])
                                   (compile expr bindings)) exprs)]
-           [compiled-body  (compile-body bound-body bindings)])
+           [compiled-body  (compile-body bound-body (cons names bindings))])
        (lambda ([env : ENV])
          (compiled-body
           (extend names (map (runner env) compiled-exprs) env))))]
     [(BindRec names exprs bound-body)
      (let ([compiled-exprs (map (lambda ([expr : TOY])
-                                  (compile expr bindings)) exprs)]
-           [compiled-body  (compile-body bound-body bindings)])
+                                  (compile expr (cons names bindings))) exprs)]
+           [compiled-body  (compile-body bound-body (cons names bindings))])
        (lambda ([env : ENV])
          (compiled-body (extend-rec names compiled-exprs env))))]
     [(Fun names bound-body)
-     (let ([compiled-body (compile-body bound-body bindings)])
+     (let ([compiled-body (compile-body bound-body (cons names bindings))])
        (lambda ([env : ENV]) (FunV names compiled-body env #f)))]
     [(RFun names bound-body)
-     (let ([compiled-body (compile-body bound-body bindings)])
+     (let ([compiled-body (compile-body bound-body (cons names bindings))])
        (lambda ([env : ENV]) (FunV names compiled-body env #t)))]
     [(Call fun-expr arg-exprs)
      (let ([compiled-fun  (compile fun-expr bindings)]
