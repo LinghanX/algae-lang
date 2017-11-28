@@ -237,6 +237,30 @@
     (lambda (env)
       (map (lambda ([get-box : (ENV -> (Boxof VAL))]) (get-box env))
            getters))))
+;; Given a symbol and bindings, find the index if it exists or #f
+(: find-index : Symbol BINDINGS -> (U #f (List Natural Natural)))
+(define (find-index s bindings) (find-index-x s bindings 0))
+
+;; helper to find the first index of a symbol
+(: find-index-x : Symbol BINDINGS Natural -> (U #f (List Natural Natural)))
+(define (find-index-x s bindings x)
+  (if (null? bindings)
+      #f
+      (if (member s (first bindings))
+          (list x (find-index-y s (first bindings) 0))
+          (find-index-x s (cdr bindings) (+ 1 x)))))
+
+;; helper to find the second index
+(: find-index-y : Symbol (Listof Symbol) Natural -> Natural)
+(define (find-index-y s symbols idx)
+  (if (equal? s (car symbols))
+      idx
+      (find-index-y s (cdr symbols) (+ 1 idx))))
+
+;; a helper function to find the right box from env and indexes
+(: get-box-from-index : (List Natural Natural) ENV -> (Boxof VAL))
+(define (get-box-from-index indexes env)
+  (cadr (list-ref (list-ref env (car indexes)) (cadr indexes))))
 
 (: compile : TOY BINDINGS -> (ENV -> VAL))
 ;; compiles TOY expressions to Racket functions.
@@ -251,9 +275,12 @@
     [(Num n)   (lambda ([env : ENV]) (RktV n))]
     [(Id name) (lambda ([env : ENV]) (unbox (lookup name env)))]
     [(Set name new)
-     (let ([compiled-new (compile new bindings)])
+     (let ([compiled-new (compile new bindings)]
+           [indexes (match (find-index name bindings)
+                      [(list a b) (list a b)]
+                      [else (error 'compile "cannot find name")])])
        (lambda ([env : ENV])
-         (set-box! (lookup name env) (compiled-new env))
+         (set-box! (get-box-from-index indexes env) (compiled-new env))
          the-bogus-value))]
     [(Bind names exprs bound-body)
      (let ([compiled-exprs (map (lambda ([expr : TOY])
@@ -421,25 +448,6 @@
 (test (compile-get-boxes (list (Num 1)) DEFAULT-BINDINGS)
       =error> "compiler disabled")
 
-;; Given a symbol and bindings, find the index if it exists or #f
-(: find-index : Symbol BINDINGS -> (U #f (List Natural Natural)))
-(define (find-index s bindings) (find-index-x s bindings 0))
-
-;; helper to find the first index of a symbol
-(: find-index-x : Symbol BINDINGS Natural -> (U #f (List Natural Natural)))
-(define (find-index-x s bindings x)
-  (if (null? bindings)
-      #f
-      (if (member s (first bindings))
-          (list x (find-index-y s (first bindings) 0))
-          (find-index-x s (cdr bindings) (+ 1 x)))))
-
-;; helper to find the second index
-(: find-index-y : Symbol (Listof Symbol) Natural -> Natural)
-(define (find-index-y s symbols idx)
-  (if (equal? s (car symbols))
-      idx
-      (find-index-y s (cdr symbols) (+ 1 idx))))
 
 ;; tests for find-index
 (test (find-index 'a '((a b c) () (c d e))) => '(0 0))
