@@ -148,30 +148,49 @@
     [(RktV v) v]
     [else (error 'racket-func "bad input: ~s" x)]))
 
-(: racket-func->prim-val : Function -> (Boxof VAL))
+(: racket-func->prim-val2 : Function -> (Boxof VAL))
 ;; converts a racket function to a primitive evaluator function which
 ;; is a PrimV holding a ((Listof VAL) -> VAL) function.  (the
 ;; resulting function will use the list function as is, and it is the
 ;; list function's responsibility to throw an error if it's given a
 ;; bad number of arguments or bad input types.)
-(define (racket-func->prim-val racket-func)
+(define (racket-func->prim-val2 racket-func)
   (define list-func (make-untyped-list-function racket-func))
   (box (PrimV (lambda (args)
                 (RktV (list-func (map unwrap-rktv args)))))))
 
+(: racket-func->prim-val : Function -> VAL)
+(define (racket-func->prim-val racket-func)
+  (define list-func (make-untyped-list-function racket-func))
+  (PrimV (lambda (args)
+           (RktV (list-func (map unwrap-rktv args))))))
+
 ;; The global environment has a few primitives:
-(: global-environment : ENV)
-(define global-environment
-  (list (list (list '+ (racket-func->prim-val +))
-              (list '- (racket-func->prim-val -))
-              (list '* (racket-func->prim-val *))
-              (list '/ (racket-func->prim-val /))
-              (list '< (racket-func->prim-val <))
-              (list '> (racket-func->prim-val >))
-              (list '= (racket-func->prim-val =))
+(: global-environment2 : ENV)
+(define global-environment2
+  (list (list (list '+ (racket-func->prim-val2 +))
+              (list '- (racket-func->prim-val2 -))
+              (list '* (racket-func->prim-val2 *))
+              (list '/ (racket-func->prim-val2 /))
+              (list '< (racket-func->prim-val2 <))
+              (list '> (racket-func->prim-val2 >))
+              (list '= (racket-func->prim-val2 =))
               ;; values
               (list 'true  (box (RktV #t)))
               (list 'false (box (RktV #f))))))
+
+(: global-environment : (Listof (List Symbol VAL)))
+(define global-environment
+  (list (list '+ (racket-func->prim-val +))
+        (list '- (racket-func->prim-val -))
+        (list '* (racket-func->prim-val *))
+        (list '/ (racket-func->prim-val /))
+        (list '< (racket-func->prim-val <))
+        (list '> (racket-func->prim-val >))
+        (list '= (racket-func->prim-val =))
+        ;; values
+        (list 'true  (RktV #t))
+        (list 'false (RktV #f))))
 
 ;;; ==================================================================
 ;;; Compilation
@@ -287,7 +306,7 @@
      (let ([compiled-new (compile new bindings)]
            [indexes (match (find-index name bindings)
                       [(list a b) (list a b)]
-                      [#f (if (lookup name global-environment)
+                      [#f (if (lookup name global-environment2)
                               (error 'compile "mutating global value")
                               (error 'compile "cannot find name"))])])
        (lambda ([env : ENV])
@@ -354,7 +373,7 @@
   (set-box! compiler-enabled? #t)
   (let ([compiled (compile (parse str) DEFAULT-BINDINGS)])
     (set-box! compiler-enabled? #f)
-    (let ([result (compiled global-environment)])
+    (let ([result (compiled global-environment2)])
       (cases result
         [(RktV v) v]
         [else (error 'run "the program returned a bad value: ~s"
