@@ -126,19 +126,19 @@
   ;; note: no need to check the lengths here, since this is only
   ;; called for `bindrec', and the syntax make it impossible to have
   ;; different lengths
-  (for-each (lambda ([name : Symbol] [compiled : (ENV -> VAL)])
-              (set-box! (lookup name new-env) (compiled new-env)))
-            names compiled-exprs)
+  (for-each (lambda ([pair : (List Symbol (Boxof VAL))] [compiled : (ENV -> VAL)])
+              (set-box! (second pair) (compiled new-env)))
+            (first new-env) compiled-exprs)
   new-env)
 
-(: lookup : Symbol ENV -> (Boxof VAL))
+(: lookup : Symbol -> (Boxof VAL))
 ;; looks for a name in an environment, searching through each frame.
-(define (lookup name env)
-  (if (null? env)   (error 'lookup "no binding for ~s" name)
-      (let ([cell (assq name (first env))])
-        (if cell
-            (second cell)
-            (lookup name (rest env))))))
+(define (lookup name)
+  (if (null? global-environment)   (error 'lookup "no binding for ~s" name)
+      (let ([cell (assq name global-environment)])
+        (match cell
+          [(list a b) (box b)]
+          [else (error 'lookup "no binding for ~s" name)]))))
 
 (: unwrap-rktv : VAL -> Any)
 ;; helper for `racket-func->prim-val': unwrap a RktV wrapper in
@@ -301,12 +301,12 @@
        (match indexes
          [(list a b) (lambda ([env : ENV])
                        (unbox (get-box-from-index indexes env)))]
-         [#f (lambda ([env : ENV]) (unbox (lookup name env)))]))]
+         [#f (lambda ([env : ENV]) (unbox (lookup name)))]))]
     [(Set name new)
      (let ([compiled-new (compile new bindings)]
            [indexes (match (find-index name bindings)
                       [(list a b) (list a b)]
-                      [#f (if (lookup name global-environment2)
+                      [#f (if (lookup name)
                               (error 'compile "mutating global value")
                               (error 'compile "cannot find name"))])])
        (lambda ([env : ENV])
