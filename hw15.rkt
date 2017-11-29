@@ -307,8 +307,8 @@
 (: execute-begin2 : VAL VAL -> Void)
 ;; executes a `begin2' description
 (define (execute-begin2 1st 2nd)
-  (begin (execute-val (strict 1st))
-         (execute-val (strict 2nd))))
+  (begin (execute-val 1st)
+         (execute-val 2nd)))
 
 (: execute-receiver : VAL (-> Any) -> Void)
 ;; helper for executing receivers, wraps the value in a RktV, and
