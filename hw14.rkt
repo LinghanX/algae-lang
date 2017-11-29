@@ -85,10 +85,7 @@
 ;;; ==================================================================
 ;;; Values and environments
 
-(define-type ENV = (Listof FRAME))
-
-;; a frame is an association list of names and values.
-(define-type FRAME = (Listof (List Symbol (Boxof VAL))))
+(define-type ENV = (Listof (Listof (Boxof VAL))))
 
 (define-type VAL
   [BogusV]
@@ -104,10 +101,7 @@
 ;; boxes
 (define (raw-extend names boxed-values env)
   (if (= (length names) (length boxed-values))
-      (cons (map (lambda ([name : Symbol] [boxed-val : (Boxof VAL)])
-                   (list name boxed-val))
-                 names boxed-values)
-            env)
+      (cons boxed-values env)
       (error 'raw-extend "arity mismatch for names: ~s" names)))
 
 (: extend : (Listof Symbol) (Listof VAL) ENV -> ENV)
@@ -126,9 +120,9 @@
   ;; note: no need to check the lengths here, since this is only
   ;; called for `bindrec', and the syntax make it impossible to have
   ;; different lengths
-  (for-each (lambda ([pair : (List Symbol (Boxof VAL))]
+  (for-each (lambda ([ref : (Boxof VAL)]
                      [compiled : (ENV -> VAL)])
-              (set-box! (second pair) (compiled new-env)))
+              (set-box! ref (compiled new-env)))
             (first new-env) compiled-exprs)
   new-env)
 
@@ -263,7 +257,7 @@
 ;; a helper function to find the right box from env and indexes
 (: get-box-from-index : (List Natural Natural) ENV -> (Boxof VAL))
 (define (get-box-from-index indexes env)
-  (cadr (list-ref (list-ref env (car indexes)) (cadr indexes))))
+  (list-ref (list-ref env (car indexes)) (cadr indexes)))
 
 (: compile : TOY BINDINGS -> (ENV -> VAL))
 ;; compiles TOY expressions to Racket functions.
