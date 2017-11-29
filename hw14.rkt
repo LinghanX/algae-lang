@@ -132,12 +132,12 @@
             (first new-env) compiled-exprs)
   new-env)
 
-(: global-lookup : Symbol -> (Boxof VAL))
+(: global-lookup : Symbol -> VAL)
 ;; looks for a name in an environment, searching through each frame.
 (define (global-lookup name)
   (let ([cell (assq name global-environment)])
     (match cell
-      [(list a b) (box b)]
+      [(list a b) b]
       [else (error 'global-lookup "no binding for ~s" name)])))
 
 (: unwrap-rktv : VAL -> Any)
@@ -281,7 +281,7 @@
        (match indexes
          [(list a b) (lambda ([env : ENV])
                        (unbox (get-box-from-index indexes env)))]
-         [#f (lambda ([env : ENV]) (unbox (global-lookup name)))]))]
+         [#f (lambda ([env : ENV]) (global-lookup name))]))]
     [(Set name new)
      (let ([compiled-new (compile new bindings)]
            [indexes (match (find-index name bindings)
