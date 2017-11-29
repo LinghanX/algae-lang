@@ -90,33 +90,18 @@
 (define-type VAL
   [BogusV]
   [RktV  Any]
-  [FunV  (Listof Symbol) (ENV -> VAL) ENV Boolean] ; `byref?' flag
+  [FunV  Natural (ENV -> VAL) ENV Boolean] ; `byref?' flag
   [PrimV ((Listof VAL) -> VAL)])
 
 ;; a single bogus value to use wherever needed
 (define the-bogus-value (BogusV))
 
-(: raw-extend : (Listof Symbol) (Listof (Boxof VAL)) ENV -> ENV)
-;; extends an environment with a new frame, given names and value
-;; boxes
-(define (raw-extend names boxed-values env)
-  (if (= (length names) (length boxed-values))
-      (cons boxed-values env)
-      (error 'raw-extend "arity mismatch for names: ~s" names)))
-
-(: extend : (Listof Symbol) (Listof VAL) ENV -> ENV)
-;; extends an environment with a new frame (given plain values).
-(define (extend names values env)
-  (raw-extend names (map (inst box VAL) values) env))
-
-(: extend-rec : (Listof Symbol) (Listof (ENV -> VAL)) ENV -> ENV)
+(: extend-rec : (Listof (ENV -> VAL)) ENV -> ENV)
 ;; extends an environment with a new recursive frame (given compiled
 ;; expressions).
-(define (extend-rec names compiled-exprs env)
+(define (extend-rec compiled-exprs env)
   (define new-env
-    (extend names
-            (map (lambda (_) the-bogus-value) compiled-exprs)
-            env))
+    (cons (map (lambda (_) (box the-bogus-value)) compiled-exprs) env))
   ;; note: no need to check the lengths here, since this is only
   ;; called for `bindrec', and the syntax make it impossible to have
   ;; different lengths
@@ -263,9 +248,9 @@
 ;; compiles TOY expressions to Racket functions.
 (define (compile expr bindings)
   ;; convenient helper for running compiled code
-  (: runner : ENV -> ((ENV -> VAL) -> VAL))
-  (define (runner env)
-    (lambda (compiled) (compiled env)))
+  (: boxed-runner : ENV -> ((ENV -> VAL) -> (Boxof VAL)))
+  (define (boxed-runner env)
+    (lambda (compiled) (box (compiled env))))
   (unless (unbox compiler-enabled?)
     (error 'compile "compiler disabled"))
   (cases expr
@@ -293,19 +278,19 @@
            [compiled-body  (compile-body bound-body (cons names bindings))])
        (lambda ([env : ENV])
          (compiled-body
-          (extend names (map (runner env) compiled-exprs) env))))]
+          (cons (map (boxed-runner env) compiled-exprs) env))))]
     [(BindRec names exprs bound-body)
      (let ([compiled-exprs (map (lambda ([expr : TOY])
                                   (compile expr (cons names bindings))) exprs)]
            [compiled-body  (compile-body bound-body (cons names bindings))])
        (lambda ([env : ENV])
-         (compiled-body (extend-rec names compiled-exprs env))))]
+         (compiled-body (extend-rec compiled-exprs env))))]
     [(Fun names bound-body)
      (let ([compiled-body (compile-body bound-body (cons names bindings))])
-       (lambda ([env : ENV]) (FunV names compiled-body env #f)))]
+       (lambda ([env : ENV]) (FunV (length names) compiled-body env #f)))]
     [(RFun names bound-body)
      (let ([compiled-body (compile-body bound-body (cons names bindings))])
-       (lambda ([env : ENV]) (FunV names compiled-body env #t)))]
+       (lambda ([env : ENV]) (FunV (length names) compiled-body env #t)))]
     [(Call fun-expr arg-exprs)
      (let ([compiled-fun  (compile fun-expr bindings)]
            [compiled-args (map (lambda ([expr : TOY])
@@ -315,15 +300,18 @@
          (let ([fval (compiled-fun env)]
                ;; delay evaluating the arguments
                [arg-vals (lambda ()
-                           (map (runner env) compiled-args))])
+                           (map (boxed-runner env) compiled-args))])
            (cases fval
-             [(PrimV proc) (proc (arg-vals))]
-             [(FunV names compiled-body fun-env byref?)
+             [(PrimV proc) (proc (map (inst unbox VAL) (arg-vals)))]
+             [(FunV len compiled-body fun-env byref?)
+              (unless (= len (length compiled-args))
+                (error 'call
+                       "arity mismatch for call: expect ~a got ~a with ~s"
+                       len (length compiled-args) arg-exprs))
               (compiled-body (if byref?
-                                 (raw-extend names
-                                             (compiled-boxes-getter env)
+                                 (cons (compiled-boxes-getter env)
                                              fun-env)
-                                 (extend names (arg-vals) fun-env)))]
+                                 (cons (arg-vals) fun-env)))]
              [else (error 'call "function call with a non-function: ~s"
                           fval)]))))]
     [(If cond-expr then-expr else-expr)
@@ -471,3 +459,12 @@
 (test (find-index 'c '((a b c) () (c d e))) => '(0 2))
 (test (find-index 'x '((a b c) () (c d e))) => #f)
 ;;; ==================================================================
+
+(test (run "{bindrec {{fib {fun {n}
+                             {if {< n 2}
+                               n
+                               {+ {fib {- n 1}}
+                                  {fib {- n 2}}}}}}}
+              {fib 27}}") => 196418)
+
+(define minutes-spent 289)
