@@ -126,19 +126,19 @@
   ;; note: no need to check the lengths here, since this is only
   ;; called for `bindrec', and the syntax make it impossible to have
   ;; different lengths
-  (for-each (lambda ([pair : (List Symbol (Boxof VAL))] [compiled : (ENV -> VAL)])
+  (for-each (lambda ([pair : (List Symbol (Boxof VAL))]
+                     [compiled : (ENV -> VAL)])
               (set-box! (second pair) (compiled new-env)))
             (first new-env) compiled-exprs)
   new-env)
 
-(: lookup : Symbol -> (Boxof VAL))
+(: global-lookup : Symbol -> (Boxof VAL))
 ;; looks for a name in an environment, searching through each frame.
-(define (lookup name)
-  (if (null? global-environment)   (error 'lookup "no binding for ~s" name)
-      (let ([cell (assq name global-environment)])
-        (match cell
-          [(list a b) (box b)]
-          [else (error 'lookup "no binding for ~s" name)]))))
+(define (global-lookup name)
+  (let ([cell (assq name global-environment)])
+    (match cell
+      [(list a b) (box b)]
+      [else (error 'global-lookup "no binding for ~s" name)])))
 
 (: unwrap-rktv : VAL -> Any)
 ;; helper for `racket-func->prim-val': unwrap a RktV wrapper in
@@ -148,36 +148,16 @@
     [(RktV v) v]
     [else (error 'racket-func "bad input: ~s" x)]))
 
-(: racket-func->prim-val2 : Function -> (Boxof VAL))
+(: racket-func->prim-val : Function -> VAL)
 ;; converts a racket function to a primitive evaluator function which
 ;; is a PrimV holding a ((Listof VAL) -> VAL) function.  (the
 ;; resulting function will use the list function as is, and it is the
 ;; list function's responsibility to throw an error if it's given a
 ;; bad number of arguments or bad input types.)
-(define (racket-func->prim-val2 racket-func)
-  (define list-func (make-untyped-list-function racket-func))
-  (box (PrimV (lambda (args)
-                (RktV (list-func (map unwrap-rktv args)))))))
-
-(: racket-func->prim-val : Function -> VAL)
 (define (racket-func->prim-val racket-func)
   (define list-func (make-untyped-list-function racket-func))
   (PrimV (lambda (args)
            (RktV (list-func (map unwrap-rktv args))))))
-
-;; The global environment has a few primitives:
-(: global-environment2 : ENV)
-(define global-environment2
-  (list (list (list '+ (racket-func->prim-val2 +))
-              (list '- (racket-func->prim-val2 -))
-              (list '* (racket-func->prim-val2 *))
-              (list '/ (racket-func->prim-val2 /))
-              (list '< (racket-func->prim-val2 <))
-              (list '> (racket-func->prim-val2 >))
-              (list '= (racket-func->prim-val2 =))
-              ;; values
-              (list 'true  (box (RktV #t)))
-              (list 'false (box (RktV #f))))))
 
 (: global-environment : (Listof (List Symbol VAL)))
 (define global-environment
@@ -301,14 +281,15 @@
        (match indexes
          [(list a b) (lambda ([env : ENV])
                        (unbox (get-box-from-index indexes env)))]
-         [#f (lambda ([env : ENV]) (unbox (lookup name)))]))]
+         [#f (lambda ([env : ENV]) (unbox (global-lookup name)))]))]
     [(Set name new)
      (let ([compiled-new (compile new bindings)]
            [indexes (match (find-index name bindings)
                       [(list a b) (list a b)]
-                      [#f (if (lookup name)
-                              (error 'compile "mutating global value")
-                              (error 'compile "cannot find name"))])])
+                      [#f (begin (void (global-lookup name))
+                                 (error 'compile
+                                        "mutating global value: ~s"
+                                        name))])])
        (lambda ([env : ENV])
          (set-box! (get-box-from-index indexes env) (compiled-new env))
          the-bogus-value))]
@@ -373,7 +354,7 @@
   (set-box! compiler-enabled? #t)
   (let ([compiled (compile (parse str) DEFAULT-BINDINGS)])
     (set-box! compiler-enabled? #f)
-    (let ([result (compiled global-environment2)])
+    (let ([result (compiled null)])
       (cases result
         [(RktV v) v]
         [else (error 'run "the program returned a bad value: ~s"
@@ -411,7 +392,7 @@
 (test (run "{}")                =error> "bad syntax")
 (test (run "{bind {{x 5} {x 5}} x}") =error> "duplicate*bind*names")
 (test (run "{fun {x x} x}")     =error> "duplicate*fun*names")
-(test (run "{+ x 1}")           =error> "no binding for")
+(test (run "{+ x 1}")           =error> "no binding for x")
 (test (run "{+ 1 {fun {x} x}}") =error> "bad input")
 (test (run "{+ 1 {fun {x} x}}") =error> "bad input")
 (test (run "{1 2}")             =error> "with a non-function")
@@ -424,6 +405,10 @@
 ;; assignment tests
 (test (run "{set! {+ x 1} x}")  =error> "bad `set!' syntax")
 (test (run "{bind {{x 1}} {set! x {+ x 1}} x}") => 2)
+(test (run "{bind {{_ {set! + -}}} 1}") =error>
+      "compile: mutating global value: +")
+(test (run "{bind {{_ {set! ++ {fun {x} {+ x 1}}}}} 1}") =error>
+      "lookup: no binding for ++")
 
 ;; `bindrec' tests
 (test (run "{bindrec {x 6} x}") =error> "bad `bindrec' syntax")
@@ -462,6 +447,13 @@
               {swap! a b}
               {+ a {* 10 b}}}")
       => 12)
+(test (run "{bind {{swap! {rfun {x y}
+                            {bind {{tmp x}}
+                              {set! x y}
+                              {set! y tmp}}}}}
+              {swap! + -}
+              {+ 1 {- 10 2}}}")
+      =error> "compiler: mutating global value")
 
 ;; test that argument are not evaluated redundantly
 (test (run "{{rfun {x} x} {/ 4 0}}") =error> "non-identifier")
