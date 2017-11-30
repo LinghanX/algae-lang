@@ -34,11 +34,11 @@
       (and (not (member (first xs) (rest xs)))
            (unique-list? (rest xs)))))
 
-;; create a debug marco mapper, is a box holding
-;; which is a list of list of two sexprs, first is before marco expand, second
-;; is after marco expension
-(: debug-marco : (Boxof (Listof (List Sexpr Sexpr))))
-(define debug-marco (box null))
+;; create a debug macro mapper, is a box holding
+;; a list of list of two sexprs, first is before macro expand, second
+;; is after macro expension
+(: debug-macro : (Boxof (Listof (List Sexpr Sexpr))))
+(define debug-macro (box null))
 
 ;; This built-in is used in the following code:
 ;; make-transformer : (Listof Symbol) (Listof (List Sexpr Sexpr))
@@ -60,8 +60,9 @@
     (if transformer
         ;; if there is a transformer by this name, apply it and
         ;; continue with the result
+        ;; in this case will put the macro transform into debug-macro
         (let ([result ((second transformer) sexpr)])
-          (set-box! debug-marco (cons (list sexpr result) (unbox debug-marco)))
+          (set-box! debug-macro (cons (list sexpr result) (unbox debug-macro)))
           (parse* result))
         (match sexpr
           ;; if we see `with-stx', then recursively parse with the
@@ -139,7 +140,11 @@
 (define-type IO
   [Print    VAL]      ; String
   [ReadLine VAL]      ; receiver: String -> IO
-  [Begin2   VAL VAL]) ; IO IO
+  [Begin2   VAL VAL]  ; IO IO
+  ;; add mutation IO
+  [NewRef   VAL VAL]
+  [UnRef    VAL VAL]
+  [SetRef   VAL VAL]) 
 
 (: extend : (Listof Symbol) (Listof VAL) ENV -> ENV)
 ;; extends an environment with a new frame.
@@ -215,6 +220,10 @@
                   (list 'print  (racket-func->prim-val Print    #f))
                   (list 'read   (racket-func->prim-val ReadLine #f))
                   (list 'begin2 (racket-func->prim-val Begin2   #f))
+                  ;; mutation IO constructors
+                  (list 'newref (racket-func->prim-val NewRef   #f))
+                  (list 'unref  (racket-func->prim-val UnRef    #f))
+                  (list 'set-ref! (racket-func->prim-val SetRef #f))
                   ;; values
                   (list 'true  (RktV #t))
                   (list 'false (RktV #f))
@@ -262,8 +271,8 @@
          [(PrimV proc) (proc arg-vals)]
          [(FunV names body fun-env)
           (eval body (extend names arg-vals fun-env))]
-         [else (error 'eval "function call with a non-function: ~s"
-                      fval)]))]
+         [else (error 'eval "function call with a non-function: ~s ~n ~s"
+                      expr fval)]))]
     [(If cond-expr then-expr else-expr)
      (eval* (if (cases (strict (eval* cond-expr))
                   [(RktV v) v] ; Racket value => use as boolean
@@ -331,13 +340,42 @@
          (let* ([wrapped (wrap-in-val (producer))]
                 [result (eval body (extend names (list wrapped) env))])
            (execute-val result))
-         (error 'execute-receiver "expecting a function with single arg"))]
+         (error 'execute-receiver
+                "expecting a function with single arg for ~s"
+                (Fun names body)))]
     [else (error 'execute-receiver "expecting a receiver function")]))
 
 (: execute-read : VAL -> Void)
 ;; executes a `read' description
 (define (execute-read receiver)
   (execute-receiver receiver read-line))
+
+(: execute-newref : VAL VAL -> Void)
+(define (execute-newref init callback)
+  (execute-receiver callback (lambda () (ref init))))
+
+(: extract-ref : VAL -> (U #f REF))
+(define (extract-ref val)
+  (cases val
+    [(RktV x)
+     (if (ref? x)
+         x
+         #f)]
+    [else #f]))
+
+(: execute-unref : VAL VAL -> Void)
+(define (execute-unref deref callback)
+  (define raw-ref (extract-ref deref))
+  (if raw-ref
+      (execute-receiver callback (lambda () (unref raw-ref)))
+      (error 'unref "expected an instance of ref, found: ~s" deref)))
+
+(: execute-set-ref : VAL VAL -> Void)
+(define (execute-set-ref deref newval)
+  (define raw-ref (extract-ref deref))
+  (if raw-ref
+      (set-ref! raw-ref newval)
+      (error 'set-ref! "expected an instance of ref, found: ~s" deref)))
 
 (: execute-val : VAL -> Void)
 ;; extracts an IO from a VAL and executes it
@@ -351,7 +389,10 @@
         (cases io
           [(Print x)    (execute-print (strict x))]
           [(ReadLine x) (execute-read (strict x))]
-          [(Begin2 x y) (execute-begin2 x y)]))))
+          [(Begin2 x y) (execute-begin2 x y)]
+          [(NewRef x y) (execute-newref x (strict y))]
+          [(UnRef  x y) (execute-unref   (strict x) (strict y))]
+          [(SetRef x y) (execute-set-ref (strict x) y)]))))
 
 (: run-io : String -> Void)
 ;; evaluate a SLUG program contained in a string, and execute the
@@ -435,6 +476,45 @@
       (run-io "{read {fun {x} {begin2 {print x} {print x}}}}")
       =output> "blahblah")
 
+;; test for the IO Mutation
+;; test for error checking single argument callback function
+(test (run-io "{read {fun {x y} {print y}}}") =error>
+      (string-append "execute-receiver: expecting a function with single arg"
+                     " for (Fun (x y) (Call (Id print) ((Id y))))"))
+;; test for the type check in both unref and set-ref!
+;; test a non ref RktV
+(test (run-io "{unref 0 {fun {x} {print x}}}") =error>
+      "unref: expected an instance of ref, found: (RktV 0)")
+
+;; test for not an RktV, like passing a closure
+(test (run-io "{unref {fun {y} y} {fun {x} {print x}}}") =error>
+      "unref: expected an instance of ref, found: (FunV (y) (Id y) (FrameEnv")
+
+;; test for set-ref!
+(test (run-io "{set-ref! 8 9}") =error>
+      "set-ref!: expected an instance of ref, found: (RktV 8)")
+
+;; test for the lazyness in newref and set-ref!, where 1/0 and 4/0 will not
+;; raise an error
+(test
+ (run-io
+  "{with-stx {do {<-}
+                 {{do {id <- {read}} next more ...}
+                  {read {fun {id} {do next more ...}}}}
+                 {{do {id <- {arg args ...}} next more ...}
+                  {arg args ... {fun {id} {do next more ...}}}}
+                 {{do first second more ...}
+                  {begin2 first {do second more ...}}}
+                 {{do only none ...}
+                  only}}
+     {do {i <- {newref {/ 1 0}}}
+         {set-ref! i {/ 4 0}}
+         {set-ref! i 9}
+         {j <- {unref i}}
+         {print {number->string j}}}}")
+ =output> "9")
+
+
 ;(test
 ; input: "foo"
 ; (run-io
@@ -485,7 +565,18 @@
           "What is your email?\n"
           "Your address is 'Foo <foo@bar.com>'\n")
 
-(set-box! debug-marco null)
+(set-box! debug-macro null)
+
+(: print-macro-debug : -> Void)
+;; this function print a well readable form of the macro transform
+(define (print-macro-debug)
+  (for-each (lambda ([x : (List Sexpr Sexpr)])
+              (printf "find macro~n")
+              (print (first x))
+              (printf "~n")
+              (print (second x))
+              (printf "~n"))
+            (reverse (unbox debug-macro))))
 
 ;; macros for I/O and refs (note how a `do' block is treated as just a
 ;; value, since it is one)
@@ -495,7 +586,7 @@
                  {{do {id <- {read}} next more ...}
                   {read {fun {id} {do next more ...}}}}
                  {{do {id <- {arg args ...}} next more ...}
-                  {{arg args ...} {fun {id} {do next more ...}}}}
+                  {arg args ... {fun {id} {do next more ...}}}}
                  {{do first second more ...}
                   {begin2 first {do second more ...}}}
                  {{do only none ...}
@@ -514,5 +605,6 @@
            {incref i} {printref i '.\n'}}}}")
  =output> "i holds: 1, 2, 3, 4.")
 
-
+(print-macro-debug)
 ;;; ==================================================================
+(define minutes-spent 445)
