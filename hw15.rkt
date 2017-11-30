@@ -34,6 +34,12 @@
       (and (not (member (first xs) (rest xs)))
            (unique-list? (rest xs)))))
 
+;; create a debug marco mapper, is a box holding
+;; which is a list of list of two sexprs, first is before marco expand, second
+;; is after marco expension
+(: debug-marco : (Boxof (Listof (List Sexpr Sexpr))))
+(define debug-marco (box null))
+
 ;; This built-in is used in the following code:
 ;; make-transformer : (Listof Symbol) (Listof (List Sexpr Sexpr))
 ;;                    -> (Sexpr -> Sexpr)
@@ -54,7 +60,9 @@
     (if transformer
         ;; if there is a transformer by this name, apply it and
         ;; continue with the result
-        (parse* ((second transformer) sexpr))
+        (let ([result ((second transformer) sexpr)])
+          (set-box! debug-marco (cons (list sexpr result) (unbox debug-marco)))
+          (parse* result))
         (match sexpr
           ;; if we see `with-stx', then recursively parse with the
           ;; additional transformer that we make
@@ -319,11 +327,11 @@
 (define (execute-receiver receiver producer)
   (cases receiver
     [(FunV names body env)
-     (let ([values (wrap-in-val (producer))])
-       (cases values
-         [(RktV v) (let ([v (eval body (extend names (list values) env))])
-                     (display ""))]
-         [else (error 'execute-receiver "invalid input")]))]
+     (if (= (length names) 1)
+         (let* ([wrapped (wrap-in-val (producer))]
+                [result (eval body (extend names (list wrapped) env))])
+           (execute-val result))
+         (error 'execute-receiver "expecting a function with single arg"))]
     [else (error 'execute-receiver "expecting a receiver function")]))
 
 (: execute-read : VAL -> Void)
@@ -451,7 +459,7 @@
                 {let* {{x 1} {y {+ x 1}}} {+ x y}}}}")
       => 3)
 
-#| uncomment these tests when you have working code
+;; #| uncomment these tests when you have working code
 
 ;; macros for I/O
 (test
@@ -459,11 +467,11 @@
  (run-io
   "{with-stx {do {<-}
                  {{do {id <- {read}} next more ...}
-                  ???}
+                  {read {fun {id} {do next more ...}}}}
                  {{do {print str} next more ...}
-                  ???}
+                  {begin2 {print str} {do next more ...}}}
                  {{do expr}
-                  ???}}
+                  expr}}
      {do {print 'What is your name?\n'}
          {name <- {read}}
          {print 'What is your email?\n'}
@@ -477,12 +485,21 @@
           "What is your email?\n"
           "Your address is 'Foo <foo@bar.com>'\n")
 
+(set-box! debug-marco null)
+
 ;; macros for I/O and refs (note how a `do' block is treated as just a
 ;; value, since it is one)
 (test
  (run-io
   "{with-stx {do {<-}
-                 ???}
+                 {{do {id <- {read}} next more ...}
+                  {read {fun {id} {do next more ...}}}}
+                 {{do {id <- {arg args ...}} next more ...}
+                  {{arg args ...} {fun {id} {do next more ...}}}}
+                 {{do first second more ...}
+                  {begin2 first {do second more ...}}}
+                 {{do only none ...}
+                  only}}
      {bind {{incref   {fun {b}
                         {do {curval <- {unref b}}
                             {set-ref! b {+ 1 curval}}}}}
@@ -496,6 +513,6 @@
            {thrice {do {incref i} {printref i ', '}}}
            {incref i} {printref i '.\n'}}}}")
  =output> "i holds: 1, 2, 3, 4.")
-|#
+
 
 ;;; ==================================================================
