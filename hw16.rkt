@@ -46,8 +46,12 @@
 (: prog-transformer : (List Symbol (Sexpr -> Sexpr)))
 (define prog-transformer
   (list 'prog (make-transformer '(prog :=)
-                                '((((left := right) ... body)
-                                   (bind ((left right) ...) body))))))
+                                '(((prog (f arg ...) := body others ...)
+                                   (bind ((f (fun (arg ...) body)))
+                                         (prog others ...)))
+                                  ((prog id := body others ...)
+                                   (bind ((id body)) (prog others ...)))
+                                  ((prog body) body)))))
                                   
 
 ;; a global transformers list
