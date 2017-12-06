@@ -4,8 +4,8 @@
 
 ;; A macro that defines a DFA language
 (define-syntax automaton
-  (syntax-rules (: ->)
-    [(automaton init-state
+  (syntax-rules (: -> end)
+    [(automaton init-state end
                 [state : (input-sym -> new-state) ...]
                 ...)
      (lambda (string)
@@ -13,7 +13,7 @@
        ...
        (define (state stream)
          (match stream
-           ['() #t]
+           ['() (if (eq? 'state 'end) #t #f)]
            [(cons 'input-sym more) (new-state more)]
            ...
            [_ #f]))
@@ -22,7 +22,7 @@
 
 (: cXr : String -> Boolean)
 ;; Identifies strings that match "c[ad]*r+"
-(define cXr (automaton init end ; `end' is the accepting state
+(define cXr (automaton init end; `end' is the accepting state
                        [init : (c -> more)]
                        [more : (a -> more)
                                (d -> more)
@@ -30,7 +30,7 @@
                        [end  : (r -> end)]))
 
 ;; tests:
-(test (cXr "cadr"))
+(test (cXr "cadr" ))
 (test (cXr "cadadadadadadddddaaarrr"))
 (test (not (cXr "ccadr")))
 (test (not (cXr "c"))) ; BAD TEST!
