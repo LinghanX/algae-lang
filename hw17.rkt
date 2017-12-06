@@ -13,7 +13,7 @@
        ...
        (define (state stream)
          (match stream
-           ['() (if (eq? 'state 'end) #t #f)]
+           ['() (eq? 'state 'end)]
            [(cons 'input-sym more) (new-state more)]
            ...
            [_ #f]))
