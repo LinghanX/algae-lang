@@ -1,5 +1,11 @@
 #lang pl 16
 
+;; Answer on question #1
+; This is because our macro expansion is on the syntax level
+; transformation, and the transformed result is also syntax
+; and may contains other marco, therefore we need to parse after expansions.
+; Also, this could enable recursive macro expansion. 
+
 ;;; ==================================================================
 ;;; Syntax
 
@@ -553,6 +559,23 @@
       {foo n} := {+ n x}
       x := {+ x 1}
   {* x {foo y}}}") => 6)
+
+(test (run-io
+ "{prog
+  {twice b} := {do {curval <- {unref b}}
+                 {set-ref! b {* 2 curval}}}
+  {do {i <- {newref 1}}
+      {twice i}
+      {print 'i now holds: '}
+      {v <- {unref i}}
+      {print {number->string v}}
+      {twice i}
+      {print ', and now it holds: '}
+      {v <- {unref i}}
+      {print {number->string v}}
+      {print '\n'}}}")
+      =output> "i now holds: 2, and now it holds: 4\n")
+
 ;; some more tests for complete coverage
 (test (run-io "{unref 1 {fun {x} x}}")
       =error> "cannot `unref' a non-ref value")
@@ -564,3 +587,5 @@
       =error> "cannot `set-ref!' a non-ref value")
 
 ;;; ==================================================================
+
+(define minutes-spent 210)
