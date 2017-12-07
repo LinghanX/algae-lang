@@ -20,7 +20,7 @@
        ...
        (init-state (explode-string string)))]))
 
-(define-syntax pushdown
+#|(define-syntax pushdown
   (syntax-rules (: ->)
     [(pushdown init end
                [state : ((input-item)
@@ -36,15 +36,88 @@
             (after-state rst (append 'addition stack))]
            ...
            [_ #f]))
+       (init (append (explode-string string) '(*)) '(*)))]))|#
+
+(define-syntax pushdown
+  (syntax-rules (: ->)
+    [(pushdown init end
+               [state : ((input-ptn ...) (stack-ptn ...)
+                                   -> new-state (addition ...)) ...]
+               ...)
+     (lambda (string)
+       (: state : (Listof Token) (Listof Token) -> Boolean) ...
+       (define state
+         (lambda (stream stack)
+           (print 'state)
+           (printf " ")
+           (print stream)
+           (printf " ")
+           (print stack)
+           (printf "~n")
+           (match (list stream stack)
+             [(list (list-rest 'input-ptn ... in-val)
+                    (list-rest 'stack-ptn ... stack-val))
+              (print "match ")
+              (print in-val)
+              (printf " ")
+              (print stack-val)
+              (printf "~n")
+              (new-state in-val (append (list 'addition ...) stack-val))]
+             ...
+             [(list '() anything) (eq? state init)]
+             [(list '(*) anything) (eq? state init)])))
+       ...
        (init (append (explode-string string) '(*)) '(*)))]))
+
+(define-syntax pushdown#
+  (syntax-rules (: ->)
+    [(pushdown# init end
+               [state : ((input-ptn ...) (stack-ptn ...)
+                                   -> new-state (addition ...)) ...]
+               ...)
+     (list 'lambda '(string)
+       '(: state : (Listof Token) (Listof Token) -> Boolean) ...
+       '(define state
+         (lambda (stream stack)
+           (match (list stream stack)
+             [(list (list-rest 'input-ptn ... in-val)
+                    (list-rest 'stack-ptn ... stack-val))
+              (new-state in-val (append (list 'addition ...) stack-val))]
+             ...
+             [(list '() anything) (eq? state init)]
+             [(list '(*) anything) (eq? state init)])))
+       ...
+       '(init (append (explode-string string) '(*)) '(*)))]))
+
+(define-syntax make-defines
+  (syntax-rules (->)
+    [(make-defines [a b] ... -> more)
+     ((define a b) ... more)]))
+
+(define-syntax make-pd-local
+  (syntax-rules ()
+    [(make-pd-local (init end state)
+                    ((in-pattern stack-pattern new-state addon) ...))
+     (lambda (stream stack)
+       (match (list stream stack)
+         [(list '() _) (eq? state init)]
+         (make-pd-matcher
+          in-pattern stack-pattern new-state addon) ...))]))
+
+(define-syntax make-pd-matcher
+  (syntax-rules ()
+    [(make-pd-matcher (in-chars ...) (stack-chars ...) new-state (addons ...))
+     [(list (list-rest 'in-chars ... in-val)
+            (list-rest 'stack-chars ... stack-val))
+      (new-state in-val (append (list 'addons ...) stack-val))]]))
 
 (: cXr : String -> Boolean)
 ;; Identifies strings that match "c[ad]*r+"
 (define cXr (automaton init end; `end' is the accepting state
                        [init : (c -> more)]
                        [more : (a -> more)
-                               (d -> more)
-                               (r -> end)]
+                             (d -> more)
+                             (r -> end)]
                        [end  : (r -> end)]))
 
 ;; tests:
@@ -57,32 +130,41 @@
 ;; Determine whether a binary number is divisible by 5
 (define div5
   (automaton mod0 mod0
-    [mod0 : (0 -> mod0) (1 -> mod1)]
-    [mod1 : (0 -> mod2) (1 -> mod3)]
-    [mod2 : (0 -> mod4) (1 -> mod0)]
-    [mod3 : (0 -> mod1) (1 -> mod2)]
-    [mod4 : (0 -> mod3) (1 -> mod4)]))
+             [mod0 : (0 -> mod0) (1 -> mod1)]
+             [mod1 : (0 -> mod2) (1 -> mod3)]
+             [mod2 : (0 -> mod4) (1 -> mod0)]
+             [mod3 : (0 -> mod1) (1 -> mod2)]
+             [mod4 : (0 -> mod3) (1 -> mod4)]))
 (test (div5 ""))
 (test (div5 "0"))
 (test (div5 "000"))
 (test (div5 (number->string 12345 2)))
 (test (not (div5 (number->string 123453 2))))
+(test (not (div5 "10011111")))
 
 (: zeros=ones : String -> Boolean)
 ;; Identifies strings of n 0s followed by n 1s
 (define zeros=ones
   (pushdown 0s end
-    [0s  : ((0) ()  -> 0s  (A))
-           (()  ()  -> 1s  ())]
-    [1s  : ((1) (A) -> 1s  ())
-           ((*) (*) -> end (*))]
-    [end : (()  (*) -> end ())]))
+            [0s  : ((0) ()  -> 0s  (A))
+                 (()  ()  -> 1s  ())]
+            [1s  : ((1) (A) -> 1s  ())
+                 ((*) (*) -> end (*))]
+            [end : (()  (*) -> end ())]))
+
+(pushdown# 0s end
+            [0s  : ((0) ()  -> 0s  (A))
+                 (()  ()  -> 1s  ())]
+            [1s  : ((1) (A) -> 1s  ())
+                 ((*) (*) -> end (*))]
+            [end : (()  (*) -> end ())])#|
+
 ;; tests:
 (test (zeros=ones ""))
 (test (zeros=ones "01"))
-(test (zeros=ones "000111"))
+(test (zeros=ones "000111"))|#
 (test (not (zeros=ones "0")))
-(test (not (zeros=ones "11")))
+(test (not (zeros=ones "11")))#|
 (test (not (zeros=ones "10")))
 (test (not (zeros=ones "00011")))
-(test (not (zeros=ones "00101111")))
+(test (not (zeros=ones "00101111")))|#
