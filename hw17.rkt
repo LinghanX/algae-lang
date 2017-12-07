@@ -20,6 +20,24 @@
        ...
        (init-state (explode-string string)))]))
 
+(define-syntax pushdown
+  (syntax-rules (: ->)
+    [(pushdown init end
+               [state : ((input-item)
+                         (stack-item)
+                         -> after-state addition) ...]
+               ...)
+     (lambda (string)
+       (define (init stream stack)
+         (match (list stream stack)
+           [(list '() '()) (eq? 'after-state 'end)]
+           [(list (list-rest fst rst)
+                  (list-rest fst-stack rst-stack))
+            (after-state rst (append 'addition stack))]
+           ...
+           [_ #f]))
+       (init (append (explode-string string) '(*)) '(*)))]))
+
 (: cXr : String -> Boolean)
 ;; Identifies strings that match "c[ad]*r+"
 (define cXr (automaton init end; `end' is the accepting state
@@ -49,3 +67,22 @@
 (test (div5 "000"))
 (test (div5 (number->string 12345 2)))
 (test (not (div5 (number->string 123453 2))))
+
+(: zeros=ones : String -> Boolean)
+;; Identifies strings of n 0s followed by n 1s
+(define zeros=ones
+  (pushdown 0s end
+    [0s  : ((0) ()  -> 0s  (A))
+           (()  ()  -> 1s  ())]
+    [1s  : ((1) (A) -> 1s  ())
+           ((*) (*) -> end (*))]
+    [end : (()  (*) -> end ())]))
+;; tests:
+(test (zeros=ones ""))
+(test (zeros=ones "01"))
+(test (zeros=ones "000111"))
+(test (not (zeros=ones "0")))
+(test (not (zeros=ones "11")))
+(test (not (zeros=ones "10")))
+(test (not (zeros=ones "00011")))
+(test (not (zeros=ones "00101111")))
